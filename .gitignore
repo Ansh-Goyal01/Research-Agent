@@ -1,7 +1,12 @@
 __pycache__/
 *.pyc
+*.pyo
 .env
-state/workflow_state.json
+config.py
+write_*.py
+fix.py
+state/
 logs/
-outputs/final/
+outputs/
+*.bak
 .DS_Store
