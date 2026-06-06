@@ -1,0 +1,13 @@
+{
+  "input_topic": {
+    "topic": "few-shot learning for image classification",
+    "domain": "computer vision",
+    "target_venue": "CVPR 2026",
+    "date_range": [
+      2021,
+      2025
+    ],
+    "max_papers": 15
+  },
+  "last_updated": "2026-06-06T13:27:59.111138"
+}

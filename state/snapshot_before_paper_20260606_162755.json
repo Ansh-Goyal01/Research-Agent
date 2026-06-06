@@ -1,0 +1,310 @@
+{
+  "input_topic": {
+    "topic": "few-shot learning for image classification",
+    "domain": "computer vision",
+    "target_venue": "CVPR 2026",
+    "date_range": [
+      2021,
+      2025
+    ],
+    "max_papers": 15
+  },
+  "last_updated": "2026-06-06T16:27:55.400777",
+  "paper_list": {
+    "papers": [
+      {
+        "title": "Task-Prior Conditional Variational Auto-Encoder for Few-Shot Image Classification",
+        "authors": [
+          "Zaiyun Yang"
+        ],
+        "year": 2022,
+        "venue": "arXiv",
+        "url": "http://arxiv.org/abs/2205.15014v1",
+        "abstract_summary": "Proposes a Task-Prior Conditional Variational Auto-Encoder model for few-shot image classification",
+        "key_contributions": [
+          "Addresses nonuniform few-shot learning",
+          "Proposes a task-level prior constraint"
+        ],
+        "stated_limitations": [
+          "May not perform well with uniform few-shot learning scenarios"
+        ],
+        "semantic_scholar_id": null
+      },
+      {
+        "title": "FHIST: A Benchmark for Few-shot Classification of Histological Images",
+        "authors": [
+          "Fereshteh Shakeri",
+          "Malik Boudiaf",
+          "Sina Mohammadi",
+          "Ivaxi Sheth",
+          "Mohammad Havaei"
+        ],
+        "year": 2022,
+        "venue": "arXiv",
+        "url": "http://arxiv.org/abs/2206.00092v1",
+        "abstract_summary": "Introduces a benchmark for few-shot classification of histological images",
+        "key_contributions": [
+          "Provides a new benchmark for few-shot learning in medical imaging",
+          "Highlights the need for few-shot learning in medical imaging"
+        ],
+        "stated_limitations": [
+          "Limited to histological images",
+          "May not be generalizable to other medical imaging applications"
+        ],
+        "semantic_scholar_id": null
+      },
+      {
+        "title": "Uncertainty-based Network for Few-shot Image Classification",
+        "authors": [
+          "Minglei Yuan",
+          "Qian Xu",
+          "Chunhao Cai",
+          "Yin-Dong Zheng",
+          "Tao Wang"
+        ],
+        "year": 2022,
+        "venue": "arXiv",
+        "url": "http://arxiv.org/abs/2205.08157v1",
+        "abstract_summary": "Proposes an uncertainty-based network for few-shot image classification",
+        "key_contributions": [
+          "Models uncertainty in classification results",
+          "Improves few-shot learning performance"
+        ],
+        "stated_limitations": [
+          "May not perform well with high levels of noise or outliers"
+        ],
+        "semantic_scholar_id": null
+      },
+      {
+        "title": "A Close Look at Few-shot Real Image Super-resolution from the Distortion Relation Perspective",
+        "authors": [
+          "Xin Li",
+          "Xin Jin",
+          "Jun Fu",
+          "Xiaoyuan Yu",
+          "Bei Tong"
+        ],
+        "year": 2021,
+        "venue": "arXiv",
+        "url": "http://arxiv.org/abs/2111.13078v3",
+        "abstract_summary": "Examines few-shot real image super-resolution from a distortion relation perspective",
+        "key_contributions": [
+          "Analyzes the distortion relation in few-shot real image super-resolution",
+          "Highlights the limitations of supervised learning-based methods"
+        ],
+        "stated_limitations": [
+          "Limited to real image super-resolution",
+          "May not be generalizable to other image restoration tasks"
+        ],
+        "semantic_scholar_id": null
+      },
+      {
+        "title": "Inferring Latent Class Statistics from Text for Robust Visual Few-Shot Learning",
+        "authors": [
+          "Yassir Bendou",
+          "Vincent Gripon",
+          "Bastien Pasdeloup",
+          "Giulia Lioi",
+          "Lukas Mauch"
+        ],
+        "year": 2023,
+        "venue": "arXiv",
+        "url": "http://arxiv.org/abs/2311.14544v1",
+        "abstract_summary": "Proposes a method to infer latent class statistics from text for robust visual few-shot learning",
+        "key_contributions": [
+          "Leverages text-derived statistics to improve few-shot learning performance",
+          "Enhances cross-domain robustness"
+        ],
+        "stated_limitations": [
+          "May not perform well with limited text data",
+          "Requires high-quality text data"
+        ],
+        "semantic_scholar_id": null
+      }
+    ],
+    "search_queries_used": [
+      "few-shot learning for image classification"
+    ],
+    "timestamp": "2026-06-06 16:27:14.096971"
+  },
+  "gap_analysis": {
+    "gaps": [
+      {
+        "gap_id": "gap_1",
+        "description": "Developing few-shot learning methods that can handle high levels of noise or outliers in the data",
+        "supporting_paper_titles": [
+          "Uncertainty-based Network for Few-shot Image Classification"
+        ],
+        "impact_score": 8.5,
+        "feasibility_score": 7.0
+      },
+      {
+        "gap_id": "gap_2",
+        "description": "Creating benchmarks for few-shot learning in medical imaging that are generalizable to other medical imaging applications",
+        "supporting_paper_titles": [
+          "FHIST: A Benchmark for Few-shot Classification of Histological Images"
+        ],
+        "impact_score": 8.0,
+        "feasibility_score": 6.5
+      },
+      {
+        "gap_id": "gap_3",
+        "description": "Improving the performance of few-shot learning methods in uniform few-shot learning scenarios",
+        "supporting_paper_titles": [
+          "Task-Prior Conditional Variational Auto-Encoder for Few-Shot Image Classification"
+        ],
+        "impact_score": 7.5,
+        "feasibility_score": 6.0
+      },
+      {
+        "gap_id": "gap_4",
+        "description": "Developing few-shot learning methods that can leverage limited text data for robust visual few-shot learning",
+        "supporting_paper_titles": [
+          "Inferring Latent Class Statistics from Text for Robust Visual Few-Shot Learning"
+        ],
+        "impact_score": 8.0,
+        "feasibility_score": 6.5
+      },
+      {
+        "gap_id": "gap_5",
+        "description": "Extending few-shot real image super-resolution methods to other image restoration tasks",
+        "supporting_paper_titles": [
+          "A Close Look at Few-shot Real Image Super-resolution from the Distortion Relation Perspective"
+        ],
+        "impact_score": 7.0,
+        "feasibility_score": 5.5
+      }
+    ],
+    "top_gap_id": "gap_1",
+    "rationale": "The top gap matters because developing few-shot learning methods that can handle high levels of noise or outliers in the data is crucial for real-world applications where data quality is often uncertain. Addressing this gap can lead to more robust and reliable few-shot learning models."
+  },
+  "idea_candidates": {
+    "ideas": [
+      {
+        "idea_id": "idea_1",
+        "hypothesis": "Developing a noise-robust few-shot learning method using a novel combination of data augmentation and uncertainty estimation can significantly improve the performance of few-shot learning models in real-world applications.",
+        "novelty_explanation": "The proposed method combines the strengths of data augmentation and uncertainty estimation to create a robust few-shot learning approach that can handle high levels of noise or outliers in the data, which is a new and innovative direction.",
+        "minimum_viable_experiment": "Train and evaluate a simple few-shot learning model with and without the proposed noise-robust method on a noisy dataset to measure the improvement in performance.",
+        "compute_cost": "low",
+        "time_estimate": "1-2 weeks",
+        "novelty_score": 8.0,
+        "feasibility_score": 9.0,
+        "impact_score": 8.5
+      },
+      {
+        "idea_id": "idea_2",
+        "hypothesis": "Creating a benchmark for few-shot learning in medical imaging that incorporates diverse datasets and evaluation metrics can facilitate the development of more generalizable and effective few-shot learning models for medical imaging applications.",
+        "novelty_explanation": "The proposed benchmark will be the first to include a wide range of medical imaging datasets and evaluation metrics, providing a comprehensive platform for evaluating and comparing few-shot learning models in medical imaging.",
+        "minimum_viable_experiment": "Develop a prototype of the benchmark using a small set of datasets and evaluation metrics, and test it with a few few-shot learning models to demonstrate its effectiveness.",
+        "compute_cost": "medium",
+        "time_estimate": "2-3 months",
+        "novelty_score": 8.5,
+        "feasibility_score": 8.0,
+        "impact_score": 8.0
+      },
+      {
+        "idea_id": "idea_3",
+        "hypothesis": "Designing a novel few-shot learning method that leverages limited text data to improve the robustness of visual few-shot learning models can lead to significant performance gains in applications where text data is scarce but available.",
+        "novelty_explanation": "The proposed method will explore new ways to incorporate text data into few-shot learning models, such as using text-based attention mechanisms or text-image fusion techniques, which have not been extensively studied before.",
+        "minimum_viable_experiment": "Train and evaluate a simple few-shot learning model with and without the proposed text-based method on a dataset with limited text data to measure the improvement in performance.",
+        "compute_cost": "low",
+        "time_estimate": "1-2 weeks",
+        "novelty_score": 8.0,
+        "feasibility_score": 8.5,
+        "impact_score": 8.0
+      }
+    ],
+    "recommended_idea_id": "idea_1"
+  },
+  "chosen_idea": {
+    "idea_id": "idea_1",
+    "hypothesis": "Developing a noise-robust few-shot learning method using a novel combination of data augmentation and uncertainty estimation can significantly improve the performance of few-shot learning models in real-world applications.",
+    "novelty_explanation": "The proposed method combines the strengths of data augmentation and uncertainty estimation to create a robust few-shot learning approach that can handle high levels of noise or outliers in the data, which is a new and innovative direction.",
+    "minimum_viable_experiment": "Train and evaluate a simple few-shot learning model with and without the proposed noise-robust method on a noisy dataset to measure the improvement in performance.",
+    "compute_cost": "low",
+    "time_estimate": "1-2 weeks",
+    "novelty_score": 8.0,
+    "feasibility_score": 9.0,
+    "impact_score": 8.5
+  },
+  "title_options": {
+    "descriptive": "Developing a Noise-Robust Few-Shot Learning Method using Data Augmentation and Uncertainty Estimation",
+    "punchy": "Revolutionizing Few-Shot Learning: Noise-Resistant Models for Real-World Applications",
+    "question_form": "Can Data Augmentation and Uncertainty Estimation Improve Few-Shot Learning in Noisy Environments?",
+    "recommended": "descriptive",
+    "rationale": "The descriptive title is recommended because it clearly and concisely states the main contribution of the research, providing an accurate representation of the work and its significance."
+  },
+  "experiment_plan": {
+    "hypothesis_null": "The performance of few-shot learning models in real-world applications is not significantly improved by using a novel combination of data augmentation and uncertainty estimation.",
+    "hypothesis_alternative": "The performance of few-shot learning models in real-world applications is significantly improved by using a novel combination of data augmentation and uncertainty estimation.",
+    "independent_variables": [
+      "data augmentation",
+      "uncertainty estimation"
+    ],
+    "dependent_variables": [
+      "accuracy"
+    ],
+    "baselines": [
+      {
+        "name": "Model-Agnostic Meta-Learning (MAML)",
+        "citation": "Finn et al. (2017)",
+        "reason_for_inclusion": "MAML is a popular few-shot learning method"
+      },
+      {
+        "name": "ProtoNets",
+        "citation": "Snell et al. (2017)",
+        "reason_for_inclusion": "ProtoNets is a simple yet effective few-shot learning method"
+      }
+    ],
+    "datasets": [
+      {
+        "name": "Omniglot",
+        "url": "https://github.com/brendenlake/omniglot",
+        "size": "1623 characters",
+        "license": "MIT"
+      },
+      {
+        "name": "Mini-ImageNet",
+        "url": "https://github.com/twitter/mini_imagenet",
+        "size": "100 classes",
+        "license": "MIT"
+      }
+    ],
+    "metrics": [
+      {
+        "name": "accuracy",
+        "formula": "correct/total",
+        "higher_is_better": true
+      },
+      {
+        "name": "F1-score",
+        "formula": "2*precision*recall/(precision+recall)",
+        "higher_is_better": true
+      }
+    ],
+    "statistical_tests": [
+      "t-test",
+      "ANOVA"
+    ],
+    "ablation_design": "We will perform ablation studies by removing one component at a time (data augmentation or uncertainty estimation) to evaluate their individual contributions to the overall performance.",
+    "compute_requirements": "CPU only, 8GB RAM",
+    "estimated_runtime_hours": 1.0
+  },
+  "code_result": {
+    "success": false,
+    "stdout": "",
+    "stderr": "Traceback (most recent call last):\n  File \"C:\\dev\\research_agent\\outputs\\code\\experiment.py\", line 4, in <module>\n    import numpy as np\nModuleNotFoundError: No module named 'numpy'\n",
+    "execution_time_seconds": 0.08,
+    "output_files": [],
+    "retry_count": 1
+  },
+  "result_summary": {
+    "metrics": [],
+    "hypothesis_verdict": "inconclusive",
+    "key_findings": [],
+    "anomalies": [
+      "No data provided"
+    ],
+    "suggested_ablation": "Provide actual results for further analysis"
+  }
+}

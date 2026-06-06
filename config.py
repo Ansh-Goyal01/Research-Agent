@@ -2,7 +2,7 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).parent
 
-GROQ_API_KEY = "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"
+GROQ_API_KEY = "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"
 
 MODEL = "llama-3.3-70b-versatile"
 MAX_TOKENS = 4096

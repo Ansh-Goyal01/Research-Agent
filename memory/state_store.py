@@ -1,5 +1,4 @@
 import json
-from pathlib import Path
 from datetime import datetime
 import config
 
@@ -20,12 +19,11 @@ def update_state(key, value):
     write_state(state)
 
 def get_state(key, default=None):
-    state = read_state()
-    return state.get(key, default)
+    return read_state().get(key, default)
 
 def snapshot_state(stage_name):
     state = read_state()
-    snapshot_path = config.BASE_DIR / "state" / f"snapshot_{stage_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-    with open(snapshot_path, "w") as f:
+    path = config.BASE_DIR / "state" / ("snapshot_" + stage_name + "_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".json")
+    with open(path, "w") as f:
         json.dump(state, f, indent=2)
-    return snapshot_path
+    return path

@@ -1,8 +1,7 @@
 import jsonlines
-from datetime import datetime
-from pathlib import Path
-import hashlib
 import json
+import hashlib
+from datetime import datetime
 import config
 
 def _hash(data):
@@ -18,7 +17,6 @@ def log(agent_name, input_data, output_data, status="success"):
     }
     with jsonlines.open(config.AUDIT_LOG, mode="a") as writer:
         writer.write(entry)
-
-    agent_log_path = config.AGENT_LOGS_DIR / f"{agent_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-    with open(agent_log_path, "w") as f:
+    log_path = config.AGENT_LOGS_DIR / (agent_name + "_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".json")
+    with open(log_path, "w") as f:
         json.dump({"input": input_data, "output": output_data, "status": status}, f, indent=2)
