@@ -1,618 +1,351 @@
-\# 🔬 Research Agent — Autonomous AI Research Pipeline
+Research Agent
 
+[![Python](https://img.shields.io/badge/Python-3.11-3776AB?style=flat-square&logo=python&logoColor=white)](https://python.org)
+[![Groq](https://img.shields.io/badge/Groq-LLaMA_3.3_70B-F55036?style=flat-square)](https://console.groq.com)
+[![arXiv](https://img.shields.io/badge/Search-arXiv_+_Semantic_Scholar-B31B1B?style=flat-square)](https://arxiv.org)
+[![License](https://img.shields.io/badge/License-MIT-22C55E?style=flat-square)](LICENSE)
+[![Status](https://img.shields.io/badge/Status-Active_Development-22C55E?style=flat-square)]()
+[![Free](https://img.shields.io/badge/Cost-100%25_Free_to_Run-A855F7?style=flat-square)]()
 
+> An end-to-end multi-agent system that takes a research topic and autonomously searches literature, finds gaps, proposes hypotheses, runs real experiments, and writes a complete IEEE-style paper draft — with human approval at every critical step.
 
-<div align="center">
+---
 
+## The idea
 
+Most AI writing tools generate plausible-sounding text. This is different.
 
-!\[Python](https://img.shields.io/badge/Python-3.11-blue?style=for-the-badge\&logo=python)
+Every claim in the output is grounded in papers actually fetched from arXiv and Semantic Scholar. Every number in the results section comes from a Python experiment that actually ran on your machine. Every citation is verified before the paper is written.
 
-!\[Groq](https://img.shields.io/badge/Groq-LLaMA\_3.3\_70B-orange?style=for-the-badge)
-
-!\[License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
-
-!\[Status](https://img.shields.io/badge/Status-Active-brightgreen?style=for-the-badge)
-
-
-
-\*\*A fully automated multi-agent system that discovers research gaps, generates ideas, runs real experiments, and drafts complete IEEE-quality research papers — from a single topic input.\*\*
-
-
-
-\[Features](#-features) • \[Architecture](#-architecture) • \[Setup](#-setup) • \[Usage](#-usage) • \[Output](#-output) • \[Stack](#-tech-stack)
-
-
-
-</div>
-
-
-
-\---
-
-
-
-\## 🎯 What It Does
-
-
-
-Change one line in `main.py` → get a full research paper draft.
-
-
+Change one line. Get a research paper draft.
 
 ```python
-
 TOPIC = "explainable AI for urban traffic congestion prediction"
-
 ```
 
+---
 
+## How it works
 
-The system does everything else automatically:
+Ten agents run in sequence, each with a single responsibility:
+Scout → Gap Analyst → Idea Generator → ✋ approve
+→ Title → Experiment Designer  → ✋ approve
+→ Implementation → Results Analyst
+→ Paper Writer → Reviewer       → ✋ approve
+→ outputs/final/paper_draft.md
 
-\- Searches 20+ real papers from arXiv and Semantic Scholar
+Three checkpoints where you decide whether to continue. Everything else is fully automated.
 
-\- Identifies research gaps with impact and feasibility scores
+---
 
-\- Proposes and ranks novel research ideas
+## What each agent does
 
-\- Designs a reproducible experiment (CPU-friendly)
+| Agent | Input | Output |
+|---|---|---|
+| Scout | research topic | 20 verified papers from arXiv + S2 |
+| Gap Analyst | paper list | ranked research gaps with scores |
+| Idea Generator | gaps | 3 falsifiable hypotheses |
+| Title Agent | chosen idea | 3 title variants + recommendation |
+| Experiment Designer | idea | full experiment plan, CPU-only |
+| Implementation | plan | working Python script + results.json |
+| Results Analyst | experiment output | metrics, verdict, findings |
+| Paper Writer | all of the above | 9-section IEEE-style draft |
+| Reviewer | draft + source data | citation audit, number audit, score |
+| Orchestrator | everything | manages flow, retries, approvals |
 
-\- Runs the experiment and collects real metrics
+---
 
-\- Writes a complete 9-section IEEE-style paper
+## Setup
 
-\- Reviews the paper for citation accuracy and hallucinations
-
-\- Saves the final draft to `outputs/final/paper\_draft.md`
-
-
-
-\---
-
-
-
-\## ✨ Features
-
-
-
-\- \*\*10 specialized AI agents\*\* each with a distinct role and strict output schema
-
-\- \*\*Real paper search\*\* via arXiv API and Semantic Scholar API
-
-\- \*\*Bulletproof experiment execution\*\* with synthetic data fallback
-
-\- \*\*XAI integration\*\* — feature importance analysis built into every experiment
-
-\- \*\*3 human approval checkpoints\*\* — you stay in control of key decisions
-
-\- \*\*Anti-hallucination guardrails\*\* — citations verified against fetched papers
-
-\- \*\*Full audit trail\*\* — every agent call logged with input/output hashes
-
-\- \*\*State snapshots\*\* — resume from any stage if something fails
-
-\- \*\*Zero GPU required\*\* — runs entirely on CPU, optimized for laptops
-
-
-
-\---
-
-
-
-\## 🏗 Architecture
-
-┌─────────────────────────────────────────────────────────┐
-
-│                    ORCHESTRATOR                          │
-
-│         (manages flow, retries, approvals)              │
-
-└──────────────────┬──────────────────────────────────────┘
-
-│
-
-┌──────────────▼──────────────┐
-
-│                             │
-
-▼                             ▼
-
-┌─────────┐   ┌────────────┐   ┌──────────────────┐
-
-│  Scout  │──▶│ Gap Analyst│──▶│ Idea Generator   │
-
-│(search) │   │  (gaps)    │   │ (hypotheses)     │
-
-└─────────┘   └────────────┘   └────────┬─────────┘
-
-│
-
-✋ HUMAN APPROVAL #1
-
-│
-
-┌───────────────────▼──────────────┐
-
-│           Title Agent             │
-
-└───────────────────┬──────────────┘
-
-│
-
-┌───────────────────▼──────────────┐
-
-│      Experiment Designer          │
-
-└───────────────────┬──────────────┘
-
-│
-
-✋ HUMAN APPROVAL #2
-
-│
-
-┌───────────────────▼──────────────┐
-
-│      Implementation Agent         │
-
-│    (writes + runs experiment)     │
-
-└───────────────────┬──────────────┘
-
-│
-
-┌───────────────────▼──────────────┐
-
-│       Results Analyst             │
-
-└───────────────────┬──────────────┘
-
-│
-
-┌───────────────────▼──────────────┐
-
-│         Paper Writer              │
-
-│   (9 sections, IEEE-style)        │
-
-└───────────────────┬──────────────┘
-
-│
-
-┌───────────────────▼──────────────┐
-
-│           Reviewer                │
-
-│  (citation + number audit)        │
-
-└───────────────────┬──────────────┘
-
-│
-
-✋ HUMAN APPROVAL #3
-
-│
-
-┌───────────────────▼──────────────┐
-
-│         Final Export              │
-
-│    outputs/final/paper\_draft.md   │
-
-└──────────────────────────────────┘
-
-
-
-\---
-
-
-
-\## 📁 Project Structure
-
-research\_agent/
-
-├── main.py                    # ← Only file you need to edit
-
-├── orchestrator.py            # Pipeline manager
-
-├── config.py                  # API keys and paths (not committed)
-
-├── schemas.py                 # Pydantic data models
-
-│
-
-├── agents/
-
-│   ├── scout.py               # Searches arXiv + Semantic Scholar
-
-│   ├── gap\_analyst.py         # Identifies research gaps
-
-│   ├── idea\_generator.py      # Proposes research ideas
-
-│   ├── title\_agent.py         # Generates paper titles
-
-│   ├── experiment\_designer.py # Designs reproducible experiments
-
-│   ├── implementation\_agent.py# Writes and runs experiment code
-
-│   ├── results\_analyst.py     # Interprets experimental outputs
-
-│   ├── paper\_writer.py        # Drafts all 9 paper sections
-
-│   └── reviewer.py            # Audits citations and claims
-
-│
-
-├── tools/
-
-│   ├── paper\_search.py        # arXiv + Semantic Scholar wrappers
-
-│   ├── code\_executor.py       # Safe subprocess runner
-
-│   └── file\_manager.py        # Path-whitelisted file operations
-
-│
-
-├── memory/
-
-│   ├── state\_store.py         # JSON state management
-
-│   └── audit\_logger.py        # Append-only audit log
-
-│
-
-├── outputs/
-
-│   ├── code/                  # Generated experiment scripts
-
-│   ├── plots/                 # Feature importance charts
-
-│   ├── sections/              # Individual section drafts
-
-│   └── final/                 # Complete paper draft
-
-│
-
-├── state/                     # Pipeline snapshots
-
-└── logs/                      # Audit trail
-
-
-
-\---
-
-
-
-\## ⚙️ Setup
-
-
-
-\### 1. Clone the repository
-
+**1. Clone**
 ```bash
-
 git clone https://github.com/Ansh-Goyal01/Research-Agent.git
-
 cd Research-Agent
-
 ```
 
-
-
-\### 2. Install dependencies
-
+**2. Install**
 ```bash
-
 pip install -r requirements.txt
-
 ```
 
+**3. Get a free Groq key**
 
+Go to [console.groq.com](https://console.groq.com) → sign up → API Keys → Create key. Free tier gives 100k tokens/day, no credit card.
 
-\### 3. Get a free Groq API key
-
-1\. Go to \[console.groq.com](https://console.groq.com)
-
-2\. Sign up free → API Keys → Create key
-
-3\. Copy your `gsk\_...` key
-
-
-
-\### 4. Create your config file
-
-Create `config.py` in the project root:
-
+**4. Create `config.py`** (never committed — in `.gitignore`)
 ```python
-
 from pathlib import Path
 
-
-
-BASE\_DIR = Path(\_\_file\_\_).parent
-
-GROQ\_API\_KEY = "your\_groq\_key\_here"
-
+BASE_DIR = Path(__file__).parent
+GROQ_API_KEY = "your_key_here"
 MODEL = "llama-3.3-70b-versatile"
-
-MAX\_TOKENS = 4096
-
-MAX\_RETRIES = 3
-
-STATE\_FILE       = BASE\_DIR / "state" / "workflow\_state.json"
-
-AUDIT\_LOG        = BASE\_DIR / "logs" / "audit.jsonl"
-
-AGENT\_LOGS\_DIR   = BASE\_DIR / "logs" / "agent\_calls"
-
-OUTPUTS\_CODE     = BASE\_DIR / "outputs" / "code"
-
-OUTPUTS\_PLOTS    = BASE\_DIR / "outputs" / "plots"
-
-OUTPUTS\_SECTIONS = BASE\_DIR / "outputs" / "sections"
-
-OUTPUTS\_FINAL    = BASE\_DIR / "outputs" / "final"
-
-OUTPUTS\_ARCHIVE  = BASE\_DIR / "outputs" / "final" / "archive"
-
-ARXIV\_BASE\_URL            = "https://export.arxiv.org/api/query"
-
-SEMANTIC\_SCHOLAR\_BASE\_URL = "https://api.semanticscholar.org/graph/v1"
-
-MAX\_PAPERS = 20
-
-CODE\_EXECUTION\_TIMEOUT = 120
-
+MAX_TOKENS = 4096
+MAX_RETRIES = 3
+STATE_FILE       = BASE_DIR / "state" / "workflow_state.json"
+AUDIT_LOG        = BASE_DIR / "logs" / "audit.jsonl"
+AGENT_LOGS_DIR   = BASE_DIR / "logs" / "agent_calls"
+OUTPUTS_CODE     = BASE_DIR / "outputs" / "code"
+OUTPUTS_PLOTS    = BASE_DIR / "outputs" / "plots"
+OUTPUTS_SECTIONS = BASE_DIR / "outputs" / "sections"
+OUTPUTS_FINAL    = BASE_DIR / "outputs" / "final"
+OUTPUTS_ARCHIVE  = BASE_DIR / "outputs" / "final" / "archive"
+ARXIV_BASE_URL            = "https://export.arxiv.org/api/query"
+SEMANTIC_SCHOLAR_BASE_URL = "https://api.semanticscholar.org/graph/v1"
+MAX_PAPERS = 20
+CODE_EXECUTION_TIMEOUT = 120
 ```
 
-
-
-> ⚠️ `config.py` is in `.gitignore` and will never be committed.
-
-
-
-\---
-
-
-
-\## 🚀 Usage
-
-
-
-\### Run the pipeline
-
+**5. Run**
 ```bash
-
 python main.py
-
 ```
 
+---
 
+## Changing the topic
 
-\### Change the research topic
-
-Edit only these lines in `main.py`:
+Open `main.py` and change these four lines only:
 
 ```python
-
-TOPIC  = "your research topic here"
-
-DOMAIN = "your research domain"
-
-VENUE  = "Target Conference or Journal 2026"
-
+TOPIC  = "your research topic"
+DOMAIN = "your domain"
+VENUE  = "IEEE Transactions on / CVPR / NeurIPS 2026"
+YEAR_FROM = 2021
 ```
 
+Everything else — the search, the experiment, the paper — adapts automatically.
 
+---
 
-\### Example topics that work well
+## Outputs
+outputs/
+├── final/
+│   └── paper_draft.md          ← complete paper
+├── code/
+│   ├── experiment.py           ← generated experiment script
+│   └── results.json            ← actual metrics
+└── plots/
+└── feature_importance.png  ← XAI visualization
+
+The paper includes abstract, introduction, related work, methodology, experiments, results, discussion, conclusion, limitations, and references — all grounded in real fetched papers and real experiment numbers.
+
+---
+
+## Guardrails
+
+This system is built to not hallucinate.
+
+- Citations are verified against the fetched paper list before writing
+- Numbers in the results section come from `results.json` only
+- Experiment code runs in a sandboxed subprocess with a 120s timeout
+- Every agent call is logged to `logs/audit.jsonl` with input/output hashes
+- `config.py`, `state/`, `outputs/`, and `logs/` are all gitignored
+
+---
+
+## Stack
+
+- **LLM** — Groq API, LLaMA 3.3 70B (free)
+- **Search** — arXiv API, Semantic Scholar API (both free, no auth)
+- **Experiments** — scikit-learn, numpy, pandas, matplotlib
+- **State** — JSON files with snapshot versioning
+- **Validation** — Pydantic v2
+- **Logging** — jsonlines audit trail
+
+No GPU required. Runs on any laptop.
+
+---
+
+## Roadmap
+
+- [ ] Streamlit UI for approvals instead of CLI
+- [ ] LaTeX export and Overleaf integration
+- [ ] Batch mode for multiple topics
+- [ ] Support for Gemini and Claude backends
+- [ ] Automatic venue-specific formatting
+
+---
+
+## Author
+
+Built by **Ansh Goyal** — ECE undergrad at JIIT Noida, working on XAI, computer vision, and applied ML research.
+
+[GitHub](https://github.com/Ansh-Goyal01) · [Email](mailto:anshgoyal5500@gmail.com)
+Save, close. Push:
+powershellgit add README.md
+git commit -m "redesign README - clean and professional"
+git push origin main
+This version is clean, specific, honest, and reads like a real project — not AI filler. The badges will render in color on GitHub automatically. Check it after pushing boss.You said: i'll paste this in github only like edit the readme in github only so give for thati'll paste this in github only like edit the readme in github only so give for that19:16Claude responded: Go to your repo → click README.Go to your repo → click README.md → click the pencil icon (Edit) → select all → delete → paste this exactly:
+markdown# Research Agent
+
+[![Python](https://img.shields.io/badge/Python-3.11-3776AB?style=flat-square&logo=python&logoColor=white)](https://python.org)
+[![Groq](https://img.shields.io/badge/Groq-LLaMA_3.3_70B-F55036?style=flat-square)](https://console.groq.com)
+[![arXiv](https://img.shields.io/badge/Search-arXiv_+_Semantic_Scholar-B31B1B?style=flat-square)](https://arxiv.org)
+[![License](https://img.shields.io/badge/License-MIT-22C55E?style=flat-square)](LICENSE)
+[![Status](https://img.shields.io/badge/Status-Active_Development-22C55E?style=flat-square)]()
+[![Free](https://img.shields.io/badge/Cost-100%25_Free_to_Run-A855F7?style=flat-square)]()
+
+> An end-to-end multi-agent system that takes a research topic and autonomously searches literature, finds gaps, proposes hypotheses, runs real experiments, and writes a complete IEEE-style paper draft — with human approval at every critical step.
+
+---
+
+## The idea
+
+Most AI writing tools generate plausible-sounding text. This is different.
+
+Every claim in the output is grounded in papers actually fetched from arXiv and Semantic Scholar. Every number in the results section comes from a Python experiment that actually ran on your machine. Every citation is verified before the paper is written.
+
+Change one line. Get a research paper draft.
 
 ```python
-
-\# Computer Vision
-
-TOPIC = "few-shot learning for medical image segmentation"
-
-
-
-\# NLP
-
-TOPIC = "hallucination detection in large language models"
-
-
-
-\# IoT / Systems
-
-TOPIC = "federated learning for edge device anomaly detection"
-
-
-
-\# Traffic / Smart Cities
-
 TOPIC = "explainable AI for urban traffic congestion prediction"
-
 ```
 
+---
 
+## How it works
 
-\### Interactive approval checkpoints
+Ten agents run in sequence, each with a single responsibility:
+Scout → Gap Analyst → Idea Generator → ✋ approve
+→ Title → Experiment Designer  → ✋ approve
+→ Implementation → Results Analyst
+→ Paper Writer → Reviewer       → ✋ approve
+→ outputs/final/paper_draft.md
 
-The pipeline pauses 3 times for your input:
+Three checkpoints where you decide whether to continue. Everything else is fully automated.
 
-1\. \*\*Idea selection\*\* — choose which research idea to pursue
+---
 
-2\. \*\*Experiment approval\*\* — review methodology before code runs
+## What each agent does
 
-3\. \*\*Final approval\*\* — approve the paper before export
+| Agent | Input | Output |
+|---|---|---|
+| Scout | research topic | 20 verified papers from arXiv + S2 |
+| Gap Analyst | paper list | ranked research gaps with scores |
+| Idea Generator | gaps | 3 falsifiable hypotheses |
+| Title Agent | chosen idea | 3 title variants + recommendation |
+| Experiment Designer | idea | full experiment plan, CPU-only |
+| Implementation | plan | working Python script + results.json |
+| Results Analyst | experiment output | metrics, verdict, findings |
+| Paper Writer | all of the above | 9-section IEEE-style draft |
+| Reviewer | draft + source data | citation audit, number audit, score |
+| Orchestrator | everything | manages flow, retries, approvals |
 
+---
 
+## Setup
 
-\---
+**1. Clone**
+```bash
+git clone https://github.com/Ansh-Goyal01/Research-Agent.git
+cd Research-Agent
+```
 
+**2. Install**
+```bash
+pip install -r requirements.txt
+```
 
+**3. Get a free Groq key**
 
-\## 📄 Output
+Go to [console.groq.com](https://console.groq.com) → sign up → API Keys → Create key. Free tier gives 100k tokens/day, no credit card needed.
 
+**4. Create `config.py`** in the project root — this file is gitignored and never committed:
 
+```python
+from pathlib import Path
 
-After a successful run you get:
+BASE_DIR = Path(__file__).parent
+GROQ_API_KEY = "your_key_here"
+MODEL = "llama-3.3-70b-versatile"
+MAX_TOKENS = 4096
+MAX_RETRIES = 3
+STATE_FILE       = BASE_DIR / "state" / "workflow_state.json"
+AUDIT_LOG        = BASE_DIR / "logs" / "audit.jsonl"
+AGENT_LOGS_DIR   = BASE_DIR / "logs" / "agent_calls"
+OUTPUTS_CODE     = BASE_DIR / "outputs" / "code"
+OUTPUTS_PLOTS    = BASE_DIR / "outputs" / "plots"
+OUTPUTS_SECTIONS = BASE_DIR / "outputs" / "sections"
+OUTPUTS_FINAL    = BASE_DIR / "outputs" / "final"
+OUTPUTS_ARCHIVE  = BASE_DIR / "outputs" / "final" / "archive"
+ARXIV_BASE_URL            = "https://export.arxiv.org/api/query"
+SEMANTIC_SCHOLAR_BASE_URL = "https://api.semanticscholar.org/graph/v1"
+MAX_PAPERS = 20
+CODE_EXECUTION_TIMEOUT = 120
+```
 
+**5. Run**
+```bash
+python main.py
+```
 
+---
 
-| File | Description |
+## Changing the topic
 
-|------|-------------|
+Open `main.py` and change these lines only:
 
-| `outputs/final/paper\_draft.md` | Complete paper draft |
+```python
+TOPIC  = "your research topic"
+DOMAIN = "your domain"
+VENUE  = "IEEE Transactions on / CVPR / NeurIPS 2026"
+```
 
-| `outputs/code/experiment.py` | Experiment script |
+Everything else adapts automatically.
 
-| `outputs/code/results.json` | Raw metric results |
+---
 
-| `outputs/plots/feature\_importance.png` | XAI feature chart |
+## Outputs
+outputs/
+├── final/
+│   └── paper_draft.md          ← complete paper
+├── code/
+│   ├── experiment.py           ← generated experiment script
+│   └── results.json            ← actual metrics
+└── plots/
+└── feature_importance.png  ← XAI visualization
 
-| `state/workflow\_state.json` | Full pipeline state |
+The paper includes abstract, introduction, related work, methodology, experiments, results, discussion, conclusion, limitations, and references — all grounded in real fetched papers and real experiment numbers.
 
-| `logs/audit.jsonl` | Complete audit trail |
+---
 
+## Guardrails
 
+- Citations verified against fetched paper list before writing
+- Numbers in results section come from `results.json` only
+- Experiment runs in sandboxed subprocess with 120s timeout
+- Every agent call logged to `logs/audit.jsonl` with input/output hashes
+- `config.py`, `state/`, `outputs/`, `logs/` all gitignored
 
-\### Sample paper output structure
+---
 
-Paper Title
+## Stack
 
-Abstract        (\~200 words)
-
-Introduction    (\~400 words)
-
-Related Work    (\~400 words, 8+ citations)
-
-Methodology     (\~500 words, equations)
-
-Experiments     (\~400 words)
-
-Results         (\~400 words, real metrics)
-
-Discussion      (\~400 words)
-
-Conclusion      (\~250 words)
-
-Limitations     (\~200 words)
-
-References      (15-20 verified citations)
-
-
-
-\---
-
-
-
-\## 🛠 Tech Stack
-
-
-
-| Component | Technology |
-
-|-----------|-----------|
-
-| LLM | Groq API — LLaMA 3.3 70B (free tier) |
-
+| Layer | Tool |
+|---|---|
+| LLM | Groq API — LLaMA 3.3 70B (free) |
 | Paper Search | arXiv API + Semantic Scholar API |
-
-| ML Experiments | scikit-learn, numpy, pandas |
-
-| Visualization | matplotlib |
-
-| State Management | JSON + TinyDB |
-
+| ML Experiments | scikit-learn, numpy, pandas, matplotlib |
+| State Management | JSON with snapshot versioning |
+| Schema Validation | Pydantic v2 |
 | Audit Logging | jsonlines |
 
-| Schema Validation | Pydantic v2 |
+No GPU required. Runs on any laptop.
 
-| Version Control | gitpython |
+---
 
+## Roadmap
 
+- [ ] Streamlit UI for approvals
+- [ ] LaTeX export and Overleaf integration
+- [ ] Batch mode for multiple topics
+- [ ] Gemini and Claude backend support
+- [ ] Venue-specific formatting (NeurIPS, IEEE, ACL)
 
-\---
+---
 
+## Author
 
+Built by **Ansh Goyal** — ECE undergrad at JIIT Noida, working on XAI, computer vision, and applied ML.
 
-\## 🔒 Safety Guardrails
-
-
-
-\- \*\*No fabricated citations\*\* — every reference verified against fetched papers
-
-\- \*\*No invented numbers\*\* — results section uses only actual experiment outputs
-
-\- \*\*No unsafe code\*\* — experiment sandbox has 120s timeout and path whitelist
-
-\- \*\*No accidental commits\*\* — `config.py`, `state/`, `outputs/`, `logs/` all gitignored
-
-\- \*\*Full audit trail\*\* — every agent call logged with timestamp and hash
-
-
-
-\---
-
-
-
-\## 🗺 Roadmap
-
-
-
-\- \[ ] Streamlit web UI for approvals
-
-\- \[ ] LaTeX / PDF export
-
-\- \[ ] Multi-topic batch processing
-
-\- \[ ] Email notification at checkpoints
-
-\- \[ ] Support for additional LLM providers
-
-\- \[ ] Automatic related work expansion
-
-\- \[ ] Integration with Overleaf API
-
-
-
-\---
-
-
-
-\## 👤 Author
-
-
-
-\*\*Ansh Goyal\*\*
-
-B.Tech ECE — Jaypee Institute of Information Technology, Noida
-
-\[GitHub](https://github.com/Ansh-Goyal01) • \[Email](mailto:anshgoyal5500@gmail.com)
-
-
-
-\---
-
-
-
-\## 📜 License
-
-
-
-MIT License — free to use, modify, and distribute.
-
-
-
-\---
-
-
-
-<div align="center">
-
-Built from scratch in one session · Powered by Groq · 100% free to run
-
-</div>
-
+[GitHub](https://github.com/Ansh-Goyal01) · [Email](mailto:anshgoyal5500@gmail.com)
