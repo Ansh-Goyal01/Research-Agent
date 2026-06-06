@@ -7,7 +7,7 @@ import config
 
 
 def _section(client, section_name, instruction, context, max_tokens=2048):
-    time.sleep(3)
+    time.sleep(7)
     response = client.chat.completions.create(
         model=config.MODEL,
         messages=[
