@@ -82,7 +82,18 @@ def run(topic_data):
     if not ok:
         print("Experiment plan rejected. Exiting.")
         return None
-
+    print("\n[Architecture] Generating system architecture diagram...")
+    from tools.diagram_generator import generate_architecture
+    title_state = state_store.get_state("title_options") or {}
+    acronym = title_state.get("method_acronym", "")
+    methodology_text = ""
+    generate_architecture(
+        topic_data["topic"],
+        topic_data.get("domain", ""),
+        acronym,
+        methodology_text
+    )
+    print("[Architecture] Done.")
     print("\n[Stage 7/10] Implementation Agent...")
     state_store.snapshot_state("before_implementation")
     code_result = implementation_agent.run()
@@ -146,8 +157,17 @@ def run(topic_data):
         "timestamp": datetime.datetime.now().isoformat()
     })
 
+   from tools.export import export_html
+    from memory import state_store as ss
+    title_opts = ss.get_state("title_options")
+    final_title = title_opts[title_opts["recommended"]] if title_opts else "Research Paper"
+    result_sum = ss.get_state("result_summary") or {}
+    html_path = export_html(draft, result_sum, final_title)
+
     print("\n" + "="*60)
     print("PIPELINE COMPLETE")
-    print("Paper: outputs/final/paper_draft.md")
+    print("Markdown : outputs/final/paper_draft.md")
+    print("HTML     : outputs/final/paper.html")
+    print("Figures  : outputs/plots/ (5 figures)")
     print("="*60)
     return draft
