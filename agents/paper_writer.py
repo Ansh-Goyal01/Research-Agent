@@ -4,6 +4,7 @@ from groq import Groq
 from tools import file_manager
 from memory import state_store, audit_logger
 from memory.token_tracker import log_usage, print_status
+from memory.style_guide import IEEE_STYLE_GUIDE, ABSTRACT_TEMPLATE, RELATED_WORK_TEMPLATE, RESULTS_TABLE_TEMPLATE
 import config
 
 
@@ -13,10 +14,9 @@ def _call(client, instruction, context, max_tokens=3000):
         model=config.MODEL,
         messages=[
             {"role": "system", "content": (
-                "You are an IEEE journal paper writer. "
-                "Write detailed technical academic prose. "
-                "Minimum 250 words per section. "
-                "Use citations from the provided list only."
+                "You are an expert IEEE journal paper writer. "
+                "Follow these style rules exactly:\n" +
+                IEEE_STYLE_GUIDE
             )},
             {"role": "user", "content": instruction + "\n\nContext:\n" + context}
         ],
@@ -45,6 +45,9 @@ def run():
     metrics = result_summary.get("metrics", [])
     findings = result_summary.get("key_findings", [])
     verdict = result_summary.get("hypothesis_verdict", "supported")
+    topic = input_topic.get("topic", "")
+    domain = input_topic.get("domain", "")
+    venue = input_topic.get("target_venue", "IEEE")
 
     metrics_str = " | ".join([
         m["metric_name"] + ": " + str(m["mean"]) + "±" + str(m["std"])
@@ -55,34 +58,46 @@ def run():
 
     base_ctx = (
         "Title: " + title + "\n"
-        "Topic: " + input_topic.get("topic", "") + "\n"
-        "Domain: " + input_topic.get("domain", "") + "\n"
-        "Venue: " + input_topic.get("target_venue", "IEEE") + "\n"
+        "Topic: " + topic + "\n"
+        "Domain: " + domain + "\n"
+        "Venue: " + venue + "\n"
         "Hypothesis: " + chosen_idea["hypothesis"] + "\n"
         "Verdict: " + verdict + "\n"
-        "Metrics: " + metrics_str + "\n"
-        "Findings: " + json.dumps(findings) + "\n"
-        "Gap: " + gap_analysis["rationale"] + "\n"
-        "Citations (use ONLY these): " + json.dumps(paper_titles[:12]) + "\n"
-        "Experiment: baselines=" + str([b["name"] for b in experiment_plan.get("baselines", [])]) +
-        " datasets=" + str([d["name"] for d in experiment_plan.get("datasets", [])]) + "\n"
+        "Actual metrics (use ONLY these numbers): " + metrics_str + "\n"
+        "Key findings: " + json.dumps(findings) + "\n"
+        "Research gap addressed: " + gap_analysis["rationale"] + "\n"
+        "Top gap description: " + gap_analysis["gaps"][0]["description"] + "\n"
+        "Supporting papers for gap: " + json.dumps(gap_analysis["gaps"][0].get("supporting_paper_titles", [])) + "\n"
+        "Available citations (ONLY use these): " + json.dumps(paper_titles[:12]) + "\n"
+        "Baselines used: " + str([b["name"] for b in experiment_plan.get("baselines", [])]) + "\n"
+        "Dataset: " + str([d["name"] for d in experiment_plan.get("datasets", [])]) + "\n"
     )
 
     sections = {}
 
     print("[PaperWriter] Batch 1: Abstract + Introduction + Related Work...")
     batch1_instruction = (
-        "Write THREE sections for a research paper. "
-        "Separate each section with exactly '---SECTION---'.\n\n"
-        "SECTION 1 - ABSTRACT (150-200 words): "
-        "IEEE-style abstract covering problem, approach, key results with exact numbers, conclusion.\n\n"
-        "SECTION 2 - INTRODUCTION (400+ words): "
-        "4 paragraphs: problem motivation, limitations of existing work (cite 3+ papers), "
-        "our contributions as numbered list, paper organization.\n\n"
-        "SECTION 3 - RELATED WORK (400+ words): "
-        "3 subsections matching the domain. Cite at least 6 papers. "
-        "For each cited work: what they did and what gap remains.\n\n"
-        "Write all three sections now."
+        "Write THREE sections separated by '---SECTION---'.\n\n"
+
+        "SECTION 1 - ABSTRACT:\n" +
+        ABSTRACT_TEMPLATE + "\n\n"
+
+        "SECTION 2 - INTRODUCTION:\n"
+        "Follow this exact structure:\n"
+        "Paragraph 1: Broader problem with real-world impact\n"
+        "Paragraph 2: Limitations of existing work — cite at least 3 papers from citations list. "
+        "For each cited paper say what it does AND what it fails to do. "
+        "Connect directly to gap: '" + gap_analysis["rationale"] + "'\n"
+        "Paragraph 3: What this paper proposes — one clear paragraph\n"
+        "Paragraph 4: Numbered contributions list (3-4 items, specific and technical)\n"
+        "Paragraph 5: Paper organization sentence\n"
+        "Minimum 400 words.\n\n"
+
+        "SECTION 3 - RELATED WORK:\n" +
+        RELATED_WORK_TEMPLATE + "\n"
+        "Use only papers from the citations list. Minimum 400 words.\n\n"
+
+        "Write all three sections now. Separate with '---SECTION---'."
     )
     batch1 = _call(client, batch1_instruction, base_ctx, max_tokens=3000)
     used = log_usage("paper_writer_batch1", batch1_instruction, batch1)
@@ -94,20 +109,41 @@ def run():
     sections["related_work"] = parts1[2].strip() if len(parts1) > 2 else ""
 
     print("[PaperWriter] Batch 2: Methodology + Experiments + Results...")
-    batch2_ctx = base_ctx + "\nFull experiment plan: " + json.dumps(experiment_plan)
+    batch2_ctx = (
+        base_ctx +
+        "\nFull experiment plan: " + json.dumps(experiment_plan) +
+        "\nResults table template to follow:\n" + RESULTS_TABLE_TEMPLATE
+    )
     batch2_instruction = (
-        "Write THREE sections for a research paper. "
-        "Separate each with '---SECTION---'.\n\n"
-        "SECTION 1 - METHODOLOGY (500+ words): "
-        "Subsections: System Overview, Data Preprocessing, Feature Engineering (XAI-based), "
-        "Model Development with hyperparameters, Mathematical formulation (2+ equations).\n\n"
-        "SECTION 2 - EXPERIMENTS (400+ words): "
-        "Dataset description with statistics, experimental setup, baselines, "
-        "evaluation metrics with formulas, 5-fold cross-validation, ablation study design.\n\n"
-        "SECTION 3 - RESULTS (400+ words): "
-        "Results table comparing all models, ablation results, feature importance findings, "
-        "statistical significance. Use ONLY these exact numbers: " + metrics_str + "\n\n"
-        "Write all three sections now."
+        "Write THREE sections separated by '---SECTION---'.\n\n"
+
+        "SECTION 1 - METHODOLOGY (500+ words):\n"
+        "Subsections:\n"
+        "A) System Overview: describe full pipeline in one paragraph\n"
+        "B) Data Acquisition and Preprocessing: describe dataset, features, cleaning steps\n"
+        "C) Feature Engineering: explain XAI-based feature selection with technical detail\n"
+        "D) Model Development: describe each model with hyperparameters\n"
+        "E) Mathematical Formulation: include at least 2 numbered equations with all variables defined\n\n"
+
+        "SECTION 2 - EXPERIMENTS (400+ words):\n"
+        "Subsections:\n"
+        "A) Dataset: name, size, source, train/test split\n"
+        "B) Implementation: language, library versions, hardware specs\n"
+        "C) Baselines: for each baseline explain why it was chosen\n"
+        "D) Evaluation Metrics: formulas for each metric\n"
+        "E) Cross-validation: describe 5-fold strategy\n"
+        "F) Ablation Study: describe what components are removed and why\n\n"
+
+        "SECTION 3 - RESULTS (400+ words):\n"
+        "Follow this exact structure:\n"
+        "1) Present the comparison table using RESULTS_TABLE_TEMPLATE format\n"
+        "2) Analyze table: 'The proposed method achieves X% accuracy, outperforming Baseline1 by Y%'\n"
+        "3) Ablation study results table\n"
+        "4) Feature importance top 5 findings\n"
+        "5) Statistical significance: mention p-values and what tests were used\n"
+        "USE ONLY THESE EXACT NUMBERS: " + metrics_str + "\n\n"
+
+        "Write all three sections. Separate with '---SECTION---'."
     )
     batch2 = _call(client, batch2_instruction, batch2_ctx, max_tokens=3000)
     used = log_usage("paper_writer_batch2", batch2_instruction, batch2)
@@ -120,17 +156,32 @@ def run():
 
     print("[PaperWriter] Batch 3: Discussion + Conclusion + Limitations...")
     batch3_instruction = (
-        "Write THREE sections for a research paper. "
-        "Separate each with '---SECTION---'.\n\n"
-        "SECTION 1 - DISCUSSION (400+ words): "
-        "Interpret results vs hypothesis, compare with related work, "
-        "practical implications, why XAI improves trust, unexpected findings.\n\n"
-        "SECTION 2 - CONCLUSION (250+ words): "
-        "Summary of contributions, exact metric numbers, practical impact, "
-        "3 specific future work directions.\n\n"
-        "SECTION 3 - LIMITATIONS (200+ words): "
-        "3 specific honest limitations referencing methodology and results.\n\n"
-        "Write all three sections now."
+        "Write THREE sections separated by '---SECTION---'.\n\n"
+
+        "SECTION 1 - DISCUSSION (400+ words):\n"
+        "Paragraph 1: Restate hypothesis and verdict with evidence from metrics\n"
+        "Paragraph 2: Direct comparison — 'Our method achieves X%, outperforming [paper] by Y%'\n"
+        "Paragraph 3: Why the method works — mechanistic explanation\n"
+        "Paragraph 4: Practical implications for real deployment in " + domain + "\n"
+        "Paragraph 5: When the method might fail — honest assessment\n\n"
+
+        "SECTION 2 - CONCLUSION (250+ words):\n"
+        "Paragraph 1: Summary of the problem and what was proposed\n"
+        "Paragraph 2: Restate contributions with exact numbers from: " + metrics_str + "\n"
+        "Paragraph 3: Three specific future work directions with technical detail\n"
+        "Paragraph 4: Broader impact on " + domain + "\n"
+        "Do NOT introduce new information.\n\n"
+
+        "SECTION 3 - LIMITATIONS (200+ words):\n"
+        "Write exactly 3 limitations. For each:\n"
+        "- State the limitation specifically (not vaguely)\n"
+        "- Explain why it exists in this work\n"
+        "- Suggest how future work could address it\n"
+        "Example of GOOD limitation: 'The dataset contains only 569 samples from a single "
+        "institution, which may limit generalizability to other clinical settings.'\n"
+        "Example of BAD limitation: 'The dataset is limited.'\n\n"
+
+        "Write all three sections. Separate with '---SECTION---'."
     )
     batch3 = _call(client, batch3_instruction, base_ctx, max_tokens=2500)
     used = log_usage("paper_writer_batch3", batch3_instruction, batch3)
@@ -144,7 +195,13 @@ def run():
     refs = []
     for i, p in enumerate(papers[:15]):
         authors = ", ".join(p.get("authors", ["Unknown"])[:3])
-        ref = "[" + str(i+1) + "] " + authors + ', "' + p["title"] + '," ' + p.get("venue", "arXiv") + ", " + str(p.get("year", "")) + "."
+        ref = (
+            "[" + str(i+1) + "] " +
+            authors + ', "' +
+            p["title"] + '," ' +
+            p.get("venue", "arXiv") + ", " +
+            str(p.get("year", "")) + "."
+        )
         refs.append(ref)
     sections["references"] = refs
 
@@ -155,7 +212,8 @@ def run():
     full = "# " + title + "\n\n"
     for s in ["abstract", "introduction", "related_work", "methodology",
               "experiments", "results", "discussion", "conclusion", "limitations"]:
-        full += "## " + s.replace("_", " ").title() + "\n\n" + sections.get(s, "") + "\n\n"
+        full += "## " + s.replace("_", " ").title() + "\n\n"
+        full += sections.get(s, "") + "\n\n"
     full += "## References\n\n" + "\n".join(refs)
 
     file_manager.save_final("paper_draft.md", full)

@@ -1,4 +1,5 @@
 from memory import state_store
+from memory.consistency_checker import run_all_checks
 from agents import scout, gap_analyst, idea_generator
 from agents import title_agent, experiment_designer
 from agents import implementation_agent, results_analyst
@@ -69,7 +70,7 @@ def run(topic_data):
         "\nHypothesis: " + exp["hypothesis_alternative"] +
         "\nDatasets: " + str([d["name"] for d in exp["datasets"]]) +
         "\nBaselines: " + str([b["name"] for b in exp["baselines"]]) +
-        "\nRuntime estimate: " + str(exp["estimated_runtime_hours"]) + " hours" +
+        "\nRuntime: " + str(exp["estimated_runtime_hours"]) + " hours" +
         "\nCompute: " + exp["compute_requirements"]
     )
     ok = get_human_approval(summary)
@@ -88,26 +89,38 @@ def run(topic_data):
 
     print("\n[Stage 7/9] Results Analyst...")
     state_store.snapshot_state("before_results")
-    results_analyst.run()
+    result_summary = results_analyst.run()
 
     print("\n[Stage 8/9] Paper Writer...")
     state_store.snapshot_state("before_paper")
     draft = paper_writer.run()
 
+    print("\n[Consistency Check] Running pre-review checks...")
+    paper_list_state = state_store.get_state("paper_list")
+    consistency_issues = run_all_checks(draft, result_summary, paper_list_state)
+    state_store.update_state("consistency_issues", consistency_issues)
+    short_sections = [i for i in consistency_issues if i["type"] == "short_section"]
+    if len(short_sections) > 3:
+        print("[ConsistencyChecker] WARNING: " + str(len(short_sections)) + " sections are too short")
+
     print("\n[Stage 9/9] Reviewer...")
     state_store.snapshot_state("before_review")
     review = reviewer.run()
     print("Verdict: " + review["overall_verdict"])
-    for issue in review["issues"]:
+    print("Quality score: " + str(review.get("quality_score", "N/A")))
+    for issue in review.get("issues", []):
         print("  [" + issue["severity"].upper() + "] " + issue["section"] + ": " + issue["description"])
 
     final = (
         "\nVerdict: " + review["overall_verdict"] +
+        "\nQuality Score: " + str(review.get("quality_score", "N/A")) + "/10" +
         "\nCritical issues: " + str(sum(1 for i in review["issues"] if i["severity"] == "critical")) +
         "\nMajor issues: " + str(sum(1 for i in review["issues"] if i["severity"] == "major")) +
         "\nMinor issues: " + str(sum(1 for i in review["issues"] if i["severity"] == "minor")) +
-        "\nCitation audit passed: " + str(review["citation_audit_passed"]) +
-        "\nNumber audit passed: " + str(review["number_audit_passed"]) +
+        "\nConsistency issues: " + str(len(consistency_issues)) +
+        "\nCitation audit: " + str(review["citation_audit_passed"]) +
+        "\nNumber audit: " + str(review["number_audit_passed"]) +
+        "\n\nStrengths:\n" + "\n".join(["  + " + s for s in review.get("strengths", [])]) +
         "\n\nPaper saved at: outputs/final/paper_draft.md"
     )
     ok = get_human_approval(final + "\n\nApprove final paper for export?")
