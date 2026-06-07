@@ -1,13 +1,13 @@
 import json
 from groq import Groq
 from memory import state_store, audit_logger
+from memory.token_tracker import log_usage, print_status
 import config
 
 
 def run():
     client = Groq(api_key=config.GROQ_API_KEY)
     gap_analysis = state_store.get_state("gap_analysis")
-    paper_list = state_store.get_state("paper_list")
     input_topic = state_store.get_state("input_topic")
     if not gap_analysis:
         raise ValueError("[IdeaGenerator] No gap_analysis in state.")
@@ -28,16 +28,15 @@ def run():
     prompt += "- Hypotheses must be specific and falsifiable\n"
     prompt += "- Compute cost must be low or medium (CPU only)\n"
     prompt += "- Each idea must be testable with scikit-learn on a laptop\n\n"
-    prompt += "Gap analysis to base ideas on:\n"
-    prompt += json.dumps(gap_analysis, indent=2) + "\n\n"
-    prompt += "Return a JSON object:\n"
+    prompt += "Gap analysis:\n" + json.dumps(gap_analysis, indent=1) + "\n\n"
+    prompt += "Return ONLY this JSON:\n"
     prompt += "{\n"
     prompt += '  "ideas": [\n'
     prompt += '    {\n'
     prompt += '      "idea_id": "idea_1",\n'
-    prompt += '      "hypothesis": "one sentence falsifiable hypothesis directly about ' + topic + '",\n'
-    prompt += '      "novelty_explanation": "what is new compared to existing work",\n'
-    prompt += '      "minimum_viable_experiment": "simplest sklearn experiment to test this",\n'
+    prompt += '      "hypothesis": "one sentence falsifiable hypothesis about ' + topic + '",\n'
+    prompt += '      "novelty_explanation": "what is new",\n'
+    prompt += '      "minimum_viable_experiment": "simplest sklearn experiment",\n'
     prompt += '      "compute_cost": "low",\n'
     prompt += '      "time_estimate": "1-2 days",\n'
     prompt += '      "novelty_score": 8.0,\n'
@@ -46,25 +45,26 @@ def run():
     prompt += '    }\n'
     prompt += '  ],\n'
     prompt += '  "recommended_idea_id": "idea_1"\n'
-    prompt += "}\n"
-    prompt += "Return ONLY the JSON object."
+    prompt += "}"
 
     response = client.chat.completions.create(
         model=config.MODEL,
         messages=[
             {"role": "system", "content": (
-                "You are a research idea generator. "
-                "You must stay strictly within the given topic and domain. "
-                "Never suggest ideas outside the specified research area. "
+                "Research idea generator for " + domain + ". "
+                "Stay strictly within the topic. "
                 "Return ONLY valid JSON."
             )},
             {"role": "user", "content": prompt}
         ],
-        max_tokens=config.MAX_TOKENS,
+        max_tokens=1500,
         temperature=0.5
     )
 
     raw = response.choices[0].message.content.strip()
+    used = log_usage("idea_generator", prompt, raw)
+    print_status("idea_generator", used)
+
     if "```" in raw:
         raw = raw.split("```")[1]
         if raw.startswith("json"):

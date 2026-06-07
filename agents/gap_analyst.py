@@ -1,6 +1,7 @@
 import json
 from groq import Groq
 from memory import state_store, audit_logger
+from memory.token_tracker import log_usage, print_status
 import config
 
 
@@ -15,48 +16,38 @@ def run():
     topic = input_topic.get("topic", "")
     domain = input_topic.get("domain", "")
 
-    print("[GapAnalyst] Analyzing " + str(len(papers)) + " papers for gaps in: " + topic)
+    trimmed = [
+        {
+            "title": p.get("title", ""),
+            "year": p.get("year", 0),
+            "abstract_summary": p.get("abstract_summary", p.get("abstract", ""))[:150],
+            "stated_limitations": p.get("stated_limitations", [])[:2]
+        }
+        for p in papers[:10]
+    ]
 
-    prompt = "Analyze these papers and find research gaps STRICTLY related to:\n"
-    prompt += "Topic: " + topic + "\n"
-    prompt += "Domain: " + domain + "\n\n"
-    prompt += "RULES:\n"
-    prompt += "- Only identify gaps directly related to the topic above\n"
-    prompt += "- Do NOT identify gaps in unrelated fields\n"
-    prompt += "- Every gap must be traceable to at least one paper below\n"
-    prompt += "- Score impact and feasibility honestly\n\n"
-    prompt += "Papers:\n" + json.dumps(papers, indent=2) + "\n\n"
-    prompt += "Return a JSON object:\n"
-    prompt += "{\n"
-    prompt += '  "gaps": [\n'
-    prompt += '    {\n'
-    prompt += '      "gap_id": "gap_1",\n'
-    prompt += '      "description": "specific gap directly related to ' + topic + '",\n'
-    prompt += '      "supporting_paper_titles": ["title1"],\n'
-    prompt += '      "impact_score": 8.5,\n'
-    prompt += '      "feasibility_score": 7.0\n'
-    prompt += '    }\n'
-    prompt += '  ],\n'
-    prompt += '  "top_gap_id": "gap_1",\n'
-    prompt += '  "rationale": "why this gap matters for ' + topic + '"\n'
-    prompt += "}\n"
-    prompt += "Identify 3-5 gaps. Return ONLY the JSON object."
+    print("[GapAnalyst] Analyzing " + str(len(trimmed)) + " papers for gaps in: " + topic)
+
+    prompt = "Find research gaps STRICTLY related to: " + topic + "\nDomain: " + domain + "\n\n"
+    prompt += "Papers:\n" + json.dumps(trimmed, indent=1) + "\n\n"
+    prompt += "Return JSON:\n"
+    prompt += '{"gaps": [{"gap_id": "gap_1", "description": "...", "supporting_paper_titles": ["title"], "impact_score": 8.5, "feasibility_score": 7.0}], "top_gap_id": "gap_1", "rationale": "..."}\n'
+    prompt += "3-5 gaps only. ONLY gaps related to " + topic + ". Return ONLY JSON."
 
     response = client.chat.completions.create(
         model=config.MODEL,
         messages=[
-            {"role": "system", "content": (
-                "You are a research analyst specializing in " + domain + ". "
-                "Only identify gaps directly related to the given topic. "
-                "Return ONLY valid JSON."
-            )},
+            {"role": "system", "content": "Research analyst for " + domain + ". Stay on topic. Return ONLY valid JSON."},
             {"role": "user", "content": prompt}
         ],
-        max_tokens=config.MAX_TOKENS,
+        max_tokens=1500,
         temperature=0.3
     )
 
     raw = response.choices[0].message.content.strip()
+    used = log_usage("gap_analyst", prompt, raw)
+    print_status("gap_analyst", used)
+
     if "```" in raw:
         raw = raw.split("```")[1]
         if raw.startswith("json"):

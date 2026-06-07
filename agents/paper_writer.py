@@ -3,19 +3,20 @@ import time
 from groq import Groq
 from tools import file_manager
 from memory import state_store, audit_logger
+from memory.token_tracker import log_usage, print_status
 import config
 
 
-def _section(client, section_name, instruction, context, max_tokens=2048):
-    time.sleep(7)
+def _call(client, instruction, context, max_tokens=3000):
+    time.sleep(6)
     response = client.chat.completions.create(
         model=config.MODEL,
         messages=[
             {"role": "system", "content": (
-                "You are an expert academic paper writer targeting IEEE journals. "
-                "Write detailed, technical, well-structured prose. "
-                "Every claim must be supported by citations from the provided list. "
-                "Use formal academic English. Minimum 300 words per section."
+                "You are an IEEE journal paper writer. "
+                "Write detailed technical academic prose. "
+                "Minimum 250 words per section. "
+                "Use citations from the provided list only."
             )},
             {"role": "user", "content": instruction + "\n\nContext:\n" + context}
         ],
@@ -45,129 +46,116 @@ def run():
     findings = result_summary.get("key_findings", [])
     verdict = result_summary.get("hypothesis_verdict", "supported")
 
+    metrics_str = " | ".join([
+        m["metric_name"] + ": " + str(m["mean"]) + "±" + str(m["std"])
+        for m in metrics
+    ])
+
     print("[PaperWriter] Writing: " + title)
 
-    metrics_str = ""
-    for m in metrics:
-        metrics_str += m["metric_name"] + ": " + str(m["mean"]) + " +/- " + str(m["std"]) + " (n=" + str(m["n_runs"]) + "), "
-
     base_ctx = (
-        "Paper title: " + title + "\n"
-        "Domain: " + str(input_topic.get("domain", "")) + "\n"
-        "Target venue: " + str(input_topic.get("target_venue", "IEEE")) + "\n"
-        "Research hypothesis: " + chosen_idea["hypothesis"] + "\n"
-        "Hypothesis verdict: " + verdict + "\n"
-        "Actual experimental metrics: " + metrics_str + "\n"
-        "Key findings: " + json.dumps(findings) + "\n"
-        "Gap addressed: " + gap_analysis["rationale"] + "\n"
-        "Available citations (ONLY use these): " + json.dumps(paper_titles) + "\n"
-        "Experiment details: " + json.dumps(experiment_plan) + "\n"
+        "Title: " + title + "\n"
+        "Topic: " + input_topic.get("topic", "") + "\n"
+        "Domain: " + input_topic.get("domain", "") + "\n"
+        "Venue: " + input_topic.get("target_venue", "IEEE") + "\n"
+        "Hypothesis: " + chosen_idea["hypothesis"] + "\n"
+        "Verdict: " + verdict + "\n"
+        "Metrics: " + metrics_str + "\n"
+        "Findings: " + json.dumps(findings) + "\n"
+        "Gap: " + gap_analysis["rationale"] + "\n"
+        "Citations (use ONLY these): " + json.dumps(paper_titles[:12]) + "\n"
+        "Experiment: baselines=" + str([b["name"] for b in experiment_plan.get("baselines", [])]) +
+        " datasets=" + str([d["name"] for d in experiment_plan.get("datasets", [])]) + "\n"
     )
 
     sections = {}
 
-    print("[PaperWriter] Abstract...")
-    sections["abstract"] = _section(client, "abstract",
-        "Write a precise IEEE-style abstract of exactly 150-200 words covering: "
-        "problem motivation, proposed approach, experimental setup, key results with exact numbers, and conclusion. "
-        "Include the actual metric values from the experimental metrics provided.",
-        base_ctx, max_tokens=512)
+    print("[PaperWriter] Batch 1: Abstract + Introduction + Related Work...")
+    batch1_instruction = (
+        "Write THREE sections for a research paper. "
+        "Separate each section with exactly '---SECTION---'.\n\n"
+        "SECTION 1 - ABSTRACT (150-200 words): "
+        "IEEE-style abstract covering problem, approach, key results with exact numbers, conclusion.\n\n"
+        "SECTION 2 - INTRODUCTION (400+ words): "
+        "4 paragraphs: problem motivation, limitations of existing work (cite 3+ papers), "
+        "our contributions as numbered list, paper organization.\n\n"
+        "SECTION 3 - RELATED WORK (400+ words): "
+        "3 subsections matching the domain. Cite at least 6 papers. "
+        "For each cited work: what they did and what gap remains.\n\n"
+        "Write all three sections now."
+    )
+    batch1 = _call(client, batch1_instruction, base_ctx, max_tokens=3000)
+    used = log_usage("paper_writer_batch1", batch1_instruction, batch1)
+    print_status("paper_writer_batch1", used)
 
-    print("[PaperWriter] Introduction...")
-    sections["introduction"] = _section(client, "introduction",
-        "Write a detailed introduction (400+ words) with 4 paragraphs: "
-        "1) Problem motivation with statistics, "
-        "2) Limitations of existing approaches citing at least 3 papers from the citations list, "
-        "3) Proposed solution and contributions as a numbered list, "
-        "4) Paper organization. "
-        "Be specific about the research gap.",
-        base_ctx + "\nPaper abstracts: " + json.dumps([p.get("abstract", "") for p in papers[:8]]))
+    parts1 = batch1.split("---SECTION---")
+    sections["abstract"] = parts1[0].strip() if len(parts1) > 0 else batch1
+    sections["introduction"] = parts1[1].strip() if len(parts1) > 1 else ""
+    sections["related_work"] = parts1[2].strip() if len(parts1) > 2 else ""
 
-    print("[PaperWriter] Related work...")
-    sections["related_work"] = _section(client, "related_work",
-        "Write a comprehensive related work section (400+ words) organized into 3 subsections: "
-        "1) Traffic congestion prediction methods, "
-        "2) Explainable AI techniques, "
-        "3) Emergency vehicle prioritization systems. "
-        "Cite at least 8 papers from the citations list. "
-        "For each cited work explain what they did and what gap remains.",
-        base_ctx + "\nFull paper list: " + json.dumps([{"title": p["title"], "abstract": p.get("abstract","")[:200]} for p in papers[:15]]))
+    print("[PaperWriter] Batch 2: Methodology + Experiments + Results...")
+    batch2_ctx = base_ctx + "\nFull experiment plan: " + json.dumps(experiment_plan)
+    batch2_instruction = (
+        "Write THREE sections for a research paper. "
+        "Separate each with '---SECTION---'.\n\n"
+        "SECTION 1 - METHODOLOGY (500+ words): "
+        "Subsections: System Overview, Data Preprocessing, Feature Engineering (XAI-based), "
+        "Model Development with hyperparameters, Mathematical formulation (2+ equations).\n\n"
+        "SECTION 2 - EXPERIMENTS (400+ words): "
+        "Dataset description with statistics, experimental setup, baselines, "
+        "evaluation metrics with formulas, 5-fold cross-validation, ablation study design.\n\n"
+        "SECTION 3 - RESULTS (400+ words): "
+        "Results table comparing all models, ablation results, feature importance findings, "
+        "statistical significance. Use ONLY these exact numbers: " + metrics_str + "\n\n"
+        "Write all three sections now."
+    )
+    batch2 = _call(client, batch2_instruction, batch2_ctx, max_tokens=3000)
+    used = log_usage("paper_writer_batch2", batch2_instruction, batch2)
+    print_status("paper_writer_batch2", used)
 
-    print("[PaperWriter] Methodology...")
-    sections["methodology"] = _section(client, "methodology",
-        "Write a detailed methodology section (500+ words) with subsections: "
-        "1) System Overview with architecture description, "
-        "2) Data Acquisition and Preprocessing, "
-        "3) Feature Engineering (explain XAI-based feature selection), "
-        "4) Model Development (Random Forest and Gradient Boosting with hyperparameters), "
-        "5) XAI Integration (feature importance analysis), "
-        "6) Mathematical formulation with at least 2 equations. "
-        "Be technically precise.",
-        base_ctx)
+    parts2 = batch2.split("---SECTION---")
+    sections["methodology"] = parts2[0].strip() if len(parts2) > 0 else batch2
+    sections["experiments"] = parts2[1].strip() if len(parts2) > 1 else ""
+    sections["results"] = parts2[2].strip() if len(parts2) > 2 else ""
 
-    print("[PaperWriter] Experiments...")
-    sections["experiments"] = _section(client, "experiments",
-        "Write a detailed experiments section (400+ words) covering: "
-        "1) Dataset description with statistics, "
-        "2) Experimental setup and implementation details, "
-        "3) Baseline methods, "
-        "4) Evaluation metrics with formulas, "
-        "5) Cross-validation strategy (5-fold), "
-        "6) Ablation study design.",
-        base_ctx)
+    print("[PaperWriter] Batch 3: Discussion + Conclusion + Limitations...")
+    batch3_instruction = (
+        "Write THREE sections for a research paper. "
+        "Separate each with '---SECTION---'.\n\n"
+        "SECTION 1 - DISCUSSION (400+ words): "
+        "Interpret results vs hypothesis, compare with related work, "
+        "practical implications, why XAI improves trust, unexpected findings.\n\n"
+        "SECTION 2 - CONCLUSION (250+ words): "
+        "Summary of contributions, exact metric numbers, practical impact, "
+        "3 specific future work directions.\n\n"
+        "SECTION 3 - LIMITATIONS (200+ words): "
+        "3 specific honest limitations referencing methodology and results.\n\n"
+        "Write all three sections now."
+    )
+    batch3 = _call(client, batch3_instruction, base_ctx, max_tokens=2500)
+    used = log_usage("paper_writer_batch3", batch3_instruction, batch3)
+    print_status("paper_writer_batch3", used)
 
-    print("[PaperWriter] Results...")
-    sections["results"] = _section(client, "results",
-        "Write a detailed results section (400+ words) using ONLY the exact metric numbers provided. "
-        "Include: "
-        "1) Main results table comparing all models, "
-        "2) Ablation study results, "
-        "3) Feature importance analysis findings, "
-        "4) Statistical significance discussion. "
-        "Every number must come from the experimental metrics. "
-        "Format key results as: Model achieved X% accuracy (mean=X, std=Y, n=5 folds).",
-        base_ctx)
-
-    print("[PaperWriter] Discussion...")
-    sections["discussion"] = _section(client, "discussion",
-        "Write a detailed discussion section (400+ words) covering: "
-        "1) Interpretation of results in context of the hypothesis, "
-        "2) Comparison with related work findings, "
-        "3) Practical implications for smart city deployment, "
-        "4) Why XAI improves trust in traffic management, "
-        "5) Unexpected findings and their explanations. "
-        "Reference actual metric values throughout.",
-        base_ctx + "\nAnomalies: " + json.dumps(result_summary.get("anomalies", [])))
-
-    print("[PaperWriter] Conclusion...")
-    sections["conclusion"] = _section(client, "conclusion",
-        "Write a conclusion section (250+ words) with: "
-        "1) Summary of contributions, "
-        "2) Key experimental findings with exact numbers, "
-        "3) Practical impact, "
-        "4) Future work directions (at least 3 specific directions).",
-        base_ctx)
-
-    print("[PaperWriter] Limitations...")
-    sections["limitations"] = _section(client, "limitations",
-        "Write a limitations section (200+ words) with at least 3 specific, honest limitations of this work. "
-        "Each limitation should reference a specific aspect of the methodology or results.",
-        base_ctx)
+    parts3 = batch3.split("---SECTION---")
+    sections["discussion"] = parts3[0].strip() if len(parts3) > 0 else batch3
+    sections["conclusion"] = parts3[1].strip() if len(parts3) > 1 else ""
+    sections["limitations"] = parts3[2].strip() if len(parts3) > 2 else ""
 
     refs = []
-    for i, p in enumerate(papers[:20]):
+    for i, p in enumerate(papers[:15]):
         authors = ", ".join(p.get("authors", ["Unknown"])[:3])
-        ref = "[" + str(i+1) + "] " + authors + ", \"" + p["title"] + ",\" " + p.get("venue", "arXiv") + ", " + str(p.get("year", "")) + "."
+        ref = "[" + str(i+1) + "] " + authors + ', "' + p["title"] + '," ' + p.get("venue", "arXiv") + ", " + str(p.get("year", "")) + "."
         refs.append(ref)
     sections["references"] = refs
 
     for sname, content in sections.items():
-        if isinstance(content, str):
+        if isinstance(content, str) and content:
             file_manager.save_section(sname, content)
 
     full = "# " + title + "\n\n"
-    for s in ["abstract", "introduction", "related_work", "methodology", "experiments", "results", "discussion", "conclusion", "limitations"]:
-        full += "## " + s.replace("_", " ").title() + "\n\n" + sections[s] + "\n\n"
+    for s in ["abstract", "introduction", "related_work", "methodology",
+              "experiments", "results", "discussion", "conclusion", "limitations"]:
+        full += "## " + s.replace("_", " ").title() + "\n\n" + sections.get(s, "") + "\n\n"
     full += "## References\n\n" + "\n".join(refs)
 
     file_manager.save_final("paper_draft.md", full)
