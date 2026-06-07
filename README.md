@@ -51,41 +51,47 @@ Most AI writing tools generate plausible-sounding text. This doesn't.
 
 ## Output
 
-Every run produces:
-outputs/
-├── final/
-│   ├── paper_draft.md          ← full paper in markdown
-│   └── paper.html              ← styled paper with all figures embedded
-├── plots/
-│   ├── fig0_architecture.png   ← system architecture diagram
-│   ├── fig1_feature_importance.png
-│   ├── fig2_model_comparison.png
-│   ├── fig3_cv_distribution.png
-│   ├── fig4_ablation.png
-│   └── fig5_confusion_matrix.png
-├── code/
-│   ├── experiment.py           ← generated experiment script
-│   └── results.json            ← raw metrics with p-values and CIs
-└── sections/                   ← individual section drafts
+Every run produces these files:
 
-The HTML paper renders like a real journal submission — open in any browser, print to PDF.
+**Final paper:**
+| File | Description |
+|------|-------------|
+| `outputs/final/paper_draft.md` | Complete paper in markdown |
+| `outputs/final/paper.html` | Styled paper with all figures embedded — open in browser, print to PDF |
+
+**Figures:**
+| File | Figure |
+|------|--------|
+| `outputs/plots/fig0_architecture.png` | System architecture diagram |
+| `outputs/plots/fig1_feature_importance.png` | XAI feature importance |
+| `outputs/plots/fig2_model_comparison.png` | Model accuracy comparison |
+| `outputs/plots/fig3_cv_distribution.png` | Cross-validation distribution |
+| `outputs/plots/fig4_ablation.png` | Ablation study |
+| `outputs/plots/fig5_confusion_matrix.png` | Confusion matrix |
+
+**Experiment artifacts:**
+| File | Description |
+|------|-------------|
+| `outputs/code/experiment.py` | Generated and executed experiment script |
+| `outputs/code/results.json` | Raw metrics · p-values · confidence intervals |
+| `outputs/sections/` | Individual section drafts |
 
 ---
 
 ## Paper structure
-Title + Method Acronym
-Abstract        150-200 words · strict IMRaD · exact metric values
-Introduction    Problem motivation · gap evidence · numbered contributions
-Related Work    3 themed subsections · synthesis · contradictions · gaps
-Methodology     System overview · equations · hyperparameters · XAI integration
-Experiments     Dataset stats · baselines · 5-fold CV · ablation design
-Results         Comparison table · p-values · 95% CI · feature importance
-Discussion      Hypothesis verdict · direct comparison · practical implications
-Conclusion      Contributions · exact numbers · 3 future directions
-Limitations     3 specific honest limitations
-References      15-20 verified citations from fetched papers only
 
----
+| Section | Details |
+|---------|---------|
+| **Abstract** | 150-200 words · strict IMRaD · exact metric values |
+| **Introduction** | Problem motivation · gap evidence from real papers · numbered contributions |
+| **Related Work** | 3 themed subsections · synthesis · contradictions · gaps |
+| **Methodology** | System overview · numbered equations · hyperparameters · XAI integration |
+| **Experiments** | Dataset statistics · baselines · 5-fold CV · ablation design |
+| **Results** | Comparison table · p-values · 95% CI · feature importance top-5 |
+| **Discussion** | Hypothesis verdict · direct comparison · practical implications |
+| **Conclusion** | Contributions with exact numbers · 3 specific future directions |
+| **Limitations** | 3 specific honest limitations with future remedies |
+| **References** | 15-20 verified citations from fetched papers only |
 
 ## Figures generated
 
