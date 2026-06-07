@@ -28,106 +28,26 @@ Most AI writing tools generate plausible-sounding text. This doesn't.
 - 6 publication-quality figures are generated automatically including a system architecture diagram
 
 ---
-
 ## Pipeline
-┌─────────────────────────────────────────────────────────────────┐
-│                         ORCHESTRATOR                            │
-│              manages flow · retries · approvals                 │
-└────────────────────────────┬────────────────────────────────────┘
-│
-┌───────────────────▼──────────────────┐
-│  Stage 1  │  Scout Agent             │
-│           │  arXiv + Semantic Scholar │
-│           │  Primary + secondary      │
-│           │  search · 20+ papers      │
-└───────────┴──────────────────────────┘
-│
-┌───────────────────▼──────────────────┐
-│  Stage 2  │  Gap Analyst             │
-│           │  Ranked gaps by impact   │
-│           │  and feasibility         │
-└───────────┴──────────────────────────┘
-│
-┌───────────────────▼──────────────────┐
-│  Stage 3  │  Related Work Agent      │
-│           │  Deep synthesis · themes  │
-│           │  contradictions · gaps    │
-└───────────┴──────────────────────────┘
-│
-┌───────────────────▼──────────────────┐
-│  Stage 4  │  Idea Generator          │
-│           │  3 falsifiable hypotheses │
-│           │  scored by impact         │
-└───────────┴──────────────────────────┘
-│
-✋ APPROVAL #1
-Choose research idea
-│
-┌───────────────────▼──────────────────┐
-│  Stage 5  │  Title Agent             │
-│           │  Method acronym           │
-│           │  3 IEEE-style variants    │
-└───────────┴──────────────────────────┘
-│
-┌───────────────────▼──────────────────┐
-│  Stage 6  │  Experiment Designer     │
-│           │  Smart dataset selection  │
-│           │  CPU-only methodology     │
-└───────────┴──────────────────────────┘
-│
-✋ APPROVAL #2
-Review experiment plan
-│
-┌───────────────────▼──────────────────┐
-│  Stage 7  │  Architecture Diagram    │
-│           │  Topic-aware system       │
-│           │  diagram auto-generated   │
-└───────────┴──────────────────────────┘
-│
-┌───────────────────▼──────────────────┐
-│  Stage 8  │  Implementation Agent    │
-│           │  RF · GB · XGBoost        │
-│           │  LightGBM · 5-fold CV     │
-│           │  p-values · 95% CI        │
-│           │  5 result figures         │
-└───────────┴──────────────────────────┘
-│
-┌───────────────────▼──────────────────┐
-│  Stage 9  │  Results Analyst         │
-│           │  Interprets real output   │
-│           │  hypothesis verdict       │
-└───────────┴──────────────────────────┘
-│
-┌───────────────────▼──────────────────┐
-│  Stage 10 │  Paper Writer            │
-│           │  IEEE style guide         │
-│           │  9 sections · IMRaD       │
-│           │  abstract rewriter        │
-└───────────┴──────────────────────────┘
-│
-┌───────────────────▼──────────────────┐
-│  Check    │  Consistency Checker     │
-│           │  Numbers · citations      │
-│           │  section lengths          │
-└───────────┴──────────────────────────┘
-│
-┌───────────────────▼──────────────────┐
-│  Stage 11 │  Reviewer Agent          │
-│           │  Citation audit           │
-│           │  Number audit · score     │
-│           │  Domain relevance check   │
-└───────────┴──────────────────────────┘
-│
-✋ APPROVAL #3
-Final paper review
-│
-┌───────────────────▼──────────────────┐
-│  Export   │  paper_draft.md          │
-│           │  paper.html (figures      │
-│           │  embedded, print-ready)   │
-└───────────┴──────────────────────────┘
 
----
+| Stage | Agent | What it does |
+|-------|-------|-------------|
+| 1 | 🔍 **Scout** | Searches arXiv + Semantic Scholar · primary + secondary queries · 20+ papers |
+| 2 | 🔬 **Gap Analyst** | Ranks research gaps by impact and feasibility score |
+| 3 | 📚 **Related Work Agent** | Deep synthesis · groups papers into themes · finds contradictions |
+| 4 | 💡 **Idea Generator** | Proposes 3 falsifiable hypotheses scored by novelty and impact |
+| — | ✋ | **HUMAN APPROVAL #1 — Choose research idea** |
+| 5 | 📝 **Title Agent** | Generates method acronym + 3 IEEE-style title variants |
+| 6 | 🧪 **Experiment Designer** | Smart dataset selection · CPU-only methodology · baselines |
+| — | ✋ | **HUMAN APPROVAL #2 — Review experiment plan** |
+| 7 | 🏗️ **Architecture Diagram** | Auto-generates topic-aware system diagram |
+| 8 | ⚙️ **Implementation Agent** | Runs RF · GB · XGBoost · LightGBM · 5-fold CV · p-values · 95% CI · 5 figures |
+| 9 | 📊 **Results Analyst** | Interprets real experiment output · hypothesis verdict |
+| 10 | ✍️ **Paper Writer** | IEEE style guide · 9 sections · strict IMRaD · abstract rewriter |
+| — | 🔎 | **Consistency Checker — numbers · citations · section lengths** |
+| 11 | 👨‍⚖️ **Reviewer Agent** | Citation audit · number audit · domain relevance · quality score |
+| — | ✋ | **HUMAN APPROVAL #3 — Final paper review** |
+| — | 📄 | **Export → paper_draft.md + paper.html (figures embedded)** |
 
 ## Output
 
