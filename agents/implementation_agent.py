@@ -15,10 +15,12 @@ warnings.filterwarnings("ignore")
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
-from sklearn.model_selection import cross_val_score, StratifiedKFold
+from sklearn.model_selection import cross_val_score, StratifiedKFold, learning_curve
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 from sklearn.datasets import load_breast_cancer
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 from scipy import stats
 
 try:
@@ -26,14 +28,12 @@ try:
     HAS_XGB = True
 except ImportError:
     HAS_XGB = False
-    print("XGBoost not available, skipping")
 
 try:
     from lightgbm import LGBMClassifier
     HAS_LGB = True
 except ImportError:
     HAS_LGB = False
-    print("LightGBM not available, skipping")
 
 os.makedirs("outputs/plots", exist_ok=True)
 os.makedirs("outputs/code", exist_ok=True)
@@ -83,10 +83,11 @@ rf_f1   = cross_val_score(rf, X, y, cv=cv, scoring="f1_weighted")
 rf_prec = cross_val_score(rf, X, y, cv=cv, scoring="precision_weighted")
 rf_rec  = cross_val_score(rf, X, y, cv=cv, scoring="recall_weighted")
 print("RF  Acc: {:.4f} +/- {:.4f}".format(rf_acc.mean(), rf_acc.std()))
-metrics.append({"metric_name": "RF_accuracy",  "mean": round(float(rf_acc.mean()),4),  "std": round(float(rf_acc.std()),4),  "n_runs": 5})
-metrics.append({"metric_name": "RF_f1_score",  "mean": round(float(rf_f1.mean()),4),   "std": round(float(rf_f1.std()),4),   "n_runs": 5})
-metrics.append({"metric_name": "RF_precision", "mean": round(float(rf_prec.mean()),4), "std": round(float(rf_prec.std()),4), "n_runs": 5})
-metrics.append({"metric_name": "RF_recall",    "mean": round(float(rf_rec.mean()),4),  "std": round(float(rf_rec.std()),4),  "n_runs": 5})
+
+metrics.append({"metric_name": "RF_accuracy",  "mean": round(float(rf_acc.mean()),4), "std": round(float(rf_acc.std()),4), "n_runs": 5})
+metrics.append({"metric_name": "RF_f1_score",  "mean": round(float(rf_f1.mean()),4),  "std": round(float(rf_f1.std()),4),  "n_runs": 5})
+metrics.append({"metric_name": "RF_precision", "mean": round(float(rf_prec.mean()),4),"std": round(float(rf_prec.std()),4),"n_runs": 5})
+metrics.append({"metric_name": "RF_recall",    "mean": round(float(rf_rec.mean()),4), "std": round(float(rf_rec.std()),4), "n_runs": 5})
 
 print("Training Gradient Boosting...")
 gb = GradientBoostingClassifier(n_estimators=100, random_state=42)
@@ -119,59 +120,18 @@ if HAS_LGB:
 
 t_stat, p_value = stats.ttest_rel(rf_acc, gb_acc)
 significance = "statistically significant (p<0.05)" if p_value < 0.05 else "not statistically significant"
-print("Paired t-test RF vs GB: t={:.4f}, p={:.4f} - {}".format(t_stat, p_value, significance))
-
+print("Paired t-test RF vs GB: t={:.4f}, p={:.4f}".format(t_stat, p_value))
 ci_rf = stats.t.interval(0.95, len(rf_acc)-1, loc=rf_acc.mean(), scale=stats.sem(rf_acc))
 ci_gb = stats.t.interval(0.95, len(gb_acc)-1, loc=gb_acc.mean(), scale=stats.sem(gb_acc))
-print("RF 95% CI: ({:.4f}, {:.4f})".format(ci_rf[0], ci_rf[1]))
 
-metrics.append({"metric_name": "p_value_rf_vs_gb", "mean": round(float(p_value),4), "std": 0.0, "n_runs": 1})
-metrics.append({"metric_name": "rf_95ci_lower",    "mean": round(float(ci_rf[0]),4), "std": 0.0, "n_runs": 1})
-metrics.append({"metric_name": "rf_95ci_upper",    "mean": round(float(ci_rf[1]),4), "std": 0.0, "n_runs": 1})
+metrics.append({"metric_name": "p_value_rf_vs_gb", "mean": round(float(p_value),4),   "std": 0.0, "n_runs": 1})
+metrics.append({"metric_name": "rf_95ci_lower",    "mean": round(float(ci_rf[0]),4),   "std": 0.0, "n_runs": 1})
+metrics.append({"metric_name": "rf_95ci_upper",    "mean": round(float(ci_rf[1]),4),   "std": 0.0, "n_runs": 1})
 
 rf.fit(X, y)
 importances = rf.feature_importances_
 indices = np.argsort(importances)[::-1]
 feature_names = features if isinstance(features[0], str) else ["f"+str(i) for i in range(X.shape[1])]
-
-fig, axes = plt.subplots(1, 2, figsize=(16, 6))
-
-colors = ["#2196F3" if i < 5 else "#90CAF9" for i in range(len(feature_names))]
-axes[0].bar(range(len(feature_names)), importances[indices], color=colors)
-axes[0].set_xticks(range(len(feature_names)))
-axes[0].set_xticklabels([feature_names[i] for i in indices], rotation=45, ha="right")
-axes[0].set_title("Feature Importance (XAI Analysis)", fontsize=13, fontweight="bold")
-axes[0].set_xlabel("Features")
-axes[0].set_ylabel("Importance Score")
-
-model_names = ["Random Forest", "Gradient Boosting"]
-accuracies  = [rf_acc.mean(), gb_acc.mean()]
-stds        = [rf_acc.std(),  gb_acc.std()]
-if HAS_XGB and xgb_acc.mean() > 0:
-    model_names.append("XGBoost")
-    accuracies.append(xgb_acc.mean())
-    stds.append(xgb_acc.std())
-if HAS_LGB and lgb_acc.mean() > 0:
-    model_names.append("LightGBM")
-    accuracies.append(lgb_acc.mean())
-    stds.append(lgb_acc.std())
-
-bar_colors = ["#2196F3", "#FF9800", "#4CAF50", "#9C27B0"]
-bars = axes[1].bar(model_names, [a*100 for a in accuracies],
-                   yerr=[s*100 for s in stds],
-                   color=bar_colors[:len(model_names)],
-                   capsize=5, alpha=0.85)
-axes[1].set_title("Model Comparison (5-fold CV)", fontsize=13, fontweight="bold")
-axes[1].set_ylabel("Accuracy (%)")
-axes[1].set_ylim([min([a*100 for a in accuracies])-2, 100])
-for bar, acc in zip(bars, accuracies):
-    axes[1].text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.3,
-                 "{:.2f}%".format(acc*100), ha="center", va="bottom", fontsize=10)
-
-plt.tight_layout()
-plt.savefig("outputs/plots/feature_importance.png", dpi=150, bbox_inches="tight")
-plt.close()
-print("Plots saved.")
 
 top5 = [feature_names[i] for i in indices[:5]]
 X_top5 = X[:, indices[:5]]
@@ -182,14 +142,147 @@ rf_top5_acc = cross_val_score(
 print("Ablation Top-5: {:.4f} +/- {:.4f}".format(rf_top5_acc.mean(), rf_top5_acc.std()))
 metrics.append({"metric_name": "XAI_top5_accuracy", "mean": round(float(rf_top5_acc.mean()),4), "std": round(float(rf_top5_acc.std()),4), "n_runs": 5})
 
-best_acc = max(accuracies)
-best_model = model_names[accuracies.index(best_acc)]
+model_names = ["Random Forest", "Gradient Boosting"]
+accuracies  = [rf_acc.mean(), gb_acc.mean()]
+stds        = [rf_acc.std(),  gb_acc.std()]
+all_scores  = [rf_acc, gb_acc]
+if HAS_XGB and xgb_acc.mean() > 0:
+    model_names.append("XGBoost")
+    accuracies.append(xgb_acc.mean())
+    stds.append(xgb_acc.std())
+    all_scores.append(xgb_acc)
+if HAS_LGB and lgb_acc.mean() > 0:
+    model_names.append("LightGBM")
+    accuracies.append(lgb_acc.mean())
+    stds.append(lgb_acc.std())
+    all_scores.append(lgb_acc)
+
+best_idx   = np.argmax(accuracies)
+best_model = model_names[best_idx]
+best_acc   = accuracies[best_idx]
 print("Best model: " + best_model + " ({:.4f})".format(best_acc))
+
+COLORS = ["#2196F3","#FF9800","#4CAF50","#9C27B0","#F44336"]
+plt.style.use("seaborn-v0_8-whitegrid")
+
+# ── FIGURE 1: Feature Importance ──────────────────────────────
+fig1, ax1 = plt.subplots(figsize=(12,5))
+bar_colors = [COLORS[0] if i < 5 else "#90CAF9" for i in range(len(feature_names))]
+bars = ax1.bar(range(len(feature_names)), importances[indices], color=bar_colors, edgecolor="white", linewidth=0.5)
+ax1.set_xticks(range(len(feature_names)))
+ax1.set_xticklabels([feature_names[i] for i in indices], rotation=45, ha="right", fontsize=10)
+ax1.set_title("Fig. 1: XAI Feature Importance Analysis (Random Forest)", fontsize=13, fontweight="bold", pad=15)
+ax1.set_xlabel("Features", fontsize=11)
+ax1.set_ylabel("Importance Score", fontsize=11)
+for i, (bar, val) in enumerate(zip(bars, importances[indices])):
+    ax1.text(bar.get_x()+bar.get_width()/2, bar.get_height()+0.001,
+             "{:.3f}".format(val), ha="center", va="bottom", fontsize=8)
+ax1.set_facecolor("#FAFAFA")
+fig1.patch.set_facecolor("white")
+plt.tight_layout()
+plt.savefig("outputs/plots/fig1_feature_importance.png", dpi=150, bbox_inches="tight")
+plt.close()
+print("Fig 1 saved: feature importance")
+
+# ── FIGURE 2: Model Comparison Bar Chart ──────────────────────
+fig2, ax2 = plt.subplots(figsize=(10,6))
+x = np.arange(len(model_names))
+bars2 = ax2.bar(x, [a*100 for a in accuracies],
+                yerr=[s*100 for s in stds],
+                color=COLORS[:len(model_names)],
+                capsize=6, alpha=0.88, edgecolor="white", linewidth=0.5,
+                error_kw={"elinewidth":2,"ecolor":"#333333"})
+ax2.set_xticks(x)
+ax2.set_xticklabels(model_names, fontsize=11)
+ax2.set_ylabel("Accuracy (%)", fontsize=12)
+ax2.set_title("Fig. 2: Model Comparison — 5-Fold Cross-Validation Accuracy", fontsize=13, fontweight="bold", pad=15)
+ax2.set_ylim([min([a*100 for a in accuracies])-3, 102])
+for bar, acc, std in zip(bars2, accuracies, stds):
+    ax2.text(bar.get_x()+bar.get_width()/2, bar.get_height()+std*100+0.5,
+             "{:.2f}%".format(acc*100), ha="center", va="bottom", fontsize=10, fontweight="bold")
+ax2.set_facecolor("#FAFAFA")
+fig2.patch.set_facecolor("white")
+plt.tight_layout()
+plt.savefig("outputs/plots/fig2_model_comparison.png", dpi=150, bbox_inches="tight")
+plt.close()
+print("Fig 2 saved: model comparison")
+
+# ── FIGURE 3: Cross-Validation Score Distribution (Box Plot) ──
+fig3, ax3 = plt.subplots(figsize=(10,6))
+bp = ax3.boxplot(
+    [s*100 for s in all_scores],
+    labels=model_names,
+    patch_artist=True,
+    notch=False,
+    medianprops={"color":"white","linewidth":2.5}
+)
+for patch, color in zip(bp["boxes"], COLORS[:len(model_names)]):
+    patch.set_facecolor(color)
+    patch.set_alpha(0.8)
+ax3.set_ylabel("Accuracy (%)", fontsize=12)
+ax3.set_title("Fig. 3: Cross-Validation Score Distribution (5 Folds)", fontsize=13, fontweight="bold", pad=15)
+ax3.set_facecolor("#FAFAFA")
+fig3.patch.set_facecolor("white")
+plt.tight_layout()
+plt.savefig("outputs/plots/fig3_cv_distribution.png", dpi=150, bbox_inches="tight")
+plt.close()
+print("Fig 3 saved: CV distribution")
+
+# ── FIGURE 4: Ablation Study ───────────────────────────────────
+ablation_labels = ["All Features\\n(" + str(len(feature_names)) + ")", "Top-5 XAI\\nFeatures"]
+ablation_vals   = [rf_acc.mean()*100, rf_top5_acc.mean()*100]
+ablation_stds   = [rf_acc.std()*100,  rf_top5_acc.std()*100]
+fig4, ax4 = plt.subplots(figsize=(8,5))
+bars4 = ax4.bar(ablation_labels, ablation_vals,
+                yerr=ablation_stds,
+                color=[COLORS[0], COLORS[2]],
+                capsize=6, alpha=0.88, edgecolor="white",
+                error_kw={"elinewidth":2,"ecolor":"#333333"})
+ax4.set_ylabel("Accuracy (%)", fontsize=12)
+ax4.set_title("Fig. 4: Ablation Study — XAI Feature Selection Impact", fontsize=13, fontweight="bold", pad=15)
+ax4.set_ylim([min(ablation_vals)-3, 102])
+for bar, val, std in zip(bars4, ablation_vals, ablation_stds):
+    ax4.text(bar.get_x()+bar.get_width()/2, bar.get_height()+std+0.3,
+             "{:.2f}%".format(val), ha="center", va="bottom", fontsize=11, fontweight="bold")
+diff = ablation_vals[0] - ablation_vals[1]
+ax4.annotate("Δ = {:.2f}%".format(diff),
+             xy=(0.5, max(ablation_vals)-1),
+             xycoords="data", ha="center", fontsize=11,
+             color="#333333", style="italic")
+ax4.set_facecolor("#FAFAFA")
+fig4.patch.set_facecolor("white")
+plt.tight_layout()
+plt.savefig("outputs/plots/fig4_ablation.png", dpi=150, bbox_inches="tight")
+plt.close()
+print("Fig 4 saved: ablation study")
+
+# ── FIGURE 5: Confusion Matrix ────────────────────────────────
+from sklearn.model_selection import cross_val_predict
+rf_preds = cross_val_predict(rf, X, y, cv=cv)
+cm = confusion_matrix(y, rf_preds)
+fig5, ax5 = plt.subplots(figsize=(7,6))
+disp = ConfusionMatrixDisplay(confusion_matrix=cm)
+disp.plot(ax=ax5, colorbar=True, cmap="Blues")
+ax5.set_title("Fig. 5: Confusion Matrix — Random Forest (5-Fold CV)", fontsize=13, fontweight="bold", pad=15)
+fig5.patch.set_facecolor("white")
+plt.tight_layout()
+plt.savefig("outputs/plots/fig5_confusion_matrix.png", dpi=150, bbox_inches="tight")
+plt.close()
+print("Fig 5 saved: confusion matrix")
+
+plot_files = [
+    "outputs/plots/fig1_feature_importance.png",
+    "outputs/plots/fig2_model_comparison.png",
+    "outputs/plots/fig3_cv_distribution.png",
+    "outputs/plots/fig4_ablation.png",
+    "outputs/plots/fig5_confusion_matrix.png"
+]
 
 results = {
     "metrics": metrics,
     "hypothesis_verdict": "supported" if best_acc > 0.75 else "partially_supported",
     "best_model": best_model,
+    "plot_files": plot_files,
     "key_findings": [
         "Best model: " + best_model + " ({:.1f}% accuracy)".format(best_acc*100),
         "Random Forest: {:.1f}% (95% CI: {:.1f}%-{:.1f}%)".format(
@@ -198,12 +291,19 @@ results = {
         "Statistical significance: t={:.4f}, p={:.4f} ({})".format(t_stat, p_value, significance),
         "Top-5 XAI features: {:.1f}% (validates feature importance)".format(rf_top5_acc.mean()*100),
         "Most important features: " + ", ".join(top5[:3]),
-        "Dataset: " + dataset_name + " | Samples: " + str(X.shape[0])
+        "Dataset: " + dataset_name + " | Samples: " + str(X.shape[0]),
+        "5 figures generated in outputs/plots/"
     ],
     "statistical_tests": {
-        "paired_ttest_rf_vs_gb": {"t_statistic": round(float(t_stat),4), "p_value": round(float(p_value),4), "significant": bool(p_value < 0.05)},
-        "rf_95_confidence_interval": {"lower": round(float(ci_rf[0]),4), "upper": round(float(ci_rf[1]),4)},
-        "gb_95_confidence_interval": {"lower": round(float(ci_gb[0]),4), "upper": round(float(ci_gb[1]),4)}
+        "paired_ttest_rf_vs_gb": {
+            "t_statistic": round(float(t_stat),4),
+            "p_value": round(float(p_value),4),
+            "significant": bool(p_value < 0.05)
+        },
+        "rf_95_confidence_interval": {
+            "lower": round(float(ci_rf[0]),4),
+            "upper": round(float(ci_rf[1]),4)
+        }
     }
 }
 
@@ -211,15 +311,15 @@ with open("outputs/code/results.json", "w") as f:
     json.dump(results, f, indent=2)
 
 print("Results saved.")
-print("EXPERIMENT COMPLETE")
+print("EXPERIMENT COMPLETE — 5 figures generated")
 '''
 
 
 def run():
     client = Groq(api_key=config.GROQ_API_KEY)
     experiment_plan = state_store.get_state("experiment_plan")
-    chosen_idea = state_store.get_state("chosen_idea")
-    input_topic = state_store.get_state("input_topic")
+    chosen_idea     = state_store.get_state("chosen_idea")
+    input_topic     = state_store.get_state("input_topic")
     if not experiment_plan:
         raise ValueError("[ImplementationAgent] No experiment_plan in state.")
 
@@ -234,17 +334,16 @@ def run():
 
     if not result["success"]:
         print("[ImplementationAgent] Safe code failed, trying LLM fallback...")
-        prompt = "Write a complete Python experiment script.\n"
+        prompt  = "Write a complete Python experiment script.\n"
         prompt += "Topic: " + topic + "\n"
         prompt += "Use ONLY scikit-learn, numpy, pandas, matplotlib, scipy\n"
         prompt += "Use sklearn.datasets.load_breast_cancer() as dataset\n"
         prompt += "Include 5-fold cross validation\n"
         prompt += "Include RandomForest and GradientBoosting\n"
         prompt += "Include scipy.stats.ttest_rel for significance testing\n"
-        prompt += "Include 95% confidence intervals\n"
+        prompt += "Generate 4 plots saved to outputs/plots/ as fig1_*.png, fig2_*.png etc\n"
         prompt += "Save results to outputs/code/results.json\n"
-        prompt += "Format: {metrics:[{metric_name,mean,std,n_runs}], hypothesis_verdict, key_findings}\n"
-        prompt += "Save plots to outputs/plots/feature_importance.png\n"
+        prompt += "Format: {metrics:[{metric_name,mean,std,n_runs}], hypothesis_verdict, key_findings, plot_files:[...]}\n"
         prompt += "Must complete in 90 seconds on CPU\n"
         prompt += "Return ONLY Python code.\n"
         prompt += "Error: " + result["stderr"][:300]
@@ -277,6 +376,7 @@ def run():
 
     if result["success"]:
         print("[ImplementationAgent] Done in " + str(result["execution_time_seconds"]) + "s")
+        print("[ImplementationAgent] Plots saved to outputs/plots/")
     else:
         print("[ImplementationAgent] Failed: " + result["stderr"][:300])
 

@@ -3,9 +3,9 @@ from orchestrator import run
 # ============================================================
 # CHANGE ONLY THIS SECTION TO RUN A DIFFERENT PAPER
 # ============================================================
-TOPIC = "explainable AI for urban traffic congestion prediction and emergency vehicle prioritization"
-DOMAIN = "intelligent transportation systems and XAI"
-VENUE = "IEEE Transactions on Intelligent Transportation Systems"
+TOPIC = "conformal prediction for uncertainty quantification in medical image classification"
+DOMAIN = "probabilistic machine learning and medical imaging"
+VENUE = "NeurIPS 2026"
 YEAR_FROM = 2021
 YEAR_TO = 2025
 MAX_PAPERS = 20
