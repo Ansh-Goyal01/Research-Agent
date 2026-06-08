@@ -1,12 +1,12 @@
 import json
-from groq import Groq
 from memory import state_store, audit_logger
 from memory.token_tracker import log_usage, print_status
+from memory.groq_client import create_client, call_with_retry
 import config
 
 
 def run():
-    client = Groq(api_key=config.GROQ_API_KEY)
+    client = create_client()
     paper_list = state_store.get_state("paper_list")
     input_topic = state_store.get_state("input_topic")
     if not paper_list:
@@ -34,17 +34,17 @@ def run():
     prompt += '{"gaps": [{"gap_id": "gap_1", "description": "...", "supporting_paper_titles": ["title"], "impact_score": 8.5, "feasibility_score": 7.0}], "top_gap_id": "gap_1", "rationale": "..."}\n'
     prompt += "3-5 gaps only. ONLY gaps related to " + topic + ". Return ONLY JSON."
 
-    response = client.chat.completions.create(
-        model=config.MODEL,
+    raw = call_with_retry(
+        client,
         messages=[
             {"role": "system", "content": "Research analyst for " + domain + ". Stay on topic. Return ONLY valid JSON."},
             {"role": "user", "content": prompt}
         ],
         max_tokens=1500,
-        temperature=0.3
+        temperature=0.3,
+        agent_name="gap_analyst"
     )
 
-    raw = response.choices[0].message.content.strip()
     used = log_usage("gap_analyst", prompt, raw)
     print_status("gap_analyst", used)
 

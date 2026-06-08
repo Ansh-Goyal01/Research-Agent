@@ -1,12 +1,12 @@
 import json
-from groq import Groq
 from memory import state_store, audit_logger
 from memory.token_tracker import log_usage, print_status
+from memory.groq_client import create_client, call_with_retry
 import config
 
 
 def run():
-    client = Groq(api_key=config.GROQ_API_KEY)
+    client = create_client()
     paper_draft = state_store.get_state("paper_draft")
     paper_list = state_store.get_state("paper_list")
     result_summary = state_store.get_state("result_summary")
@@ -22,9 +22,9 @@ def run():
 
     print("[Reviewer] Reviewing paper...")
 
-    prompt = "Review this research paper as a strict IEEE journal reviewer.\n\n"
-    prompt += "Research domain: " + domain + "\n"
-    prompt += "Research topic: " + topic + "\n\n"
+    prompt = "Review this paper as a strict IEEE journal reviewer.\n\n"
+    prompt += "Domain: " + domain + "\n"
+    prompt += "Topic: " + topic + "\n\n"
     prompt += "ABSTRACT:\n" + paper_draft.get("abstract", "")[:400] + "\n\n"
     prompt += "INTRODUCTION:\n" + paper_draft.get("introduction", "")[:400] + "\n\n"
     prompt += "METHODOLOGY:\n" + paper_draft.get("methodology", "")[:400] + "\n\n"
@@ -52,23 +52,20 @@ def run():
     prompt += '  "hallucination_flags": [],\n'
     prompt += '  "quality_score": 8.5,\n'
     prompt += '  "strengths": ["strength1", "strength2"],\n'
-    prompt += '  "recommended_additional_citations": ["topic to search"]\n'
+    prompt += '  "recommended_additional_citations": ["topic"]\n'
     prompt += "}"
 
-    response = client.chat.completions.create(
-        model=config.MODEL,
+    raw = call_with_retry(
+        client,
         messages=[
-            {"role": "system", "content": (
-                "Strict IEEE reviewer for " + domain + ". "
-                "Flag topic drift. Return ONLY valid JSON."
-            )},
+            {"role": "system", "content": "Strict IEEE reviewer for " + domain + ". Return ONLY valid JSON."},
             {"role": "user", "content": prompt}
         ],
         max_tokens=1500,
-        temperature=0.2
+        temperature=0.2,
+        agent_name="reviewer"
     )
 
-    raw = response.choices[0].message.content.strip()
     used = log_usage("reviewer", prompt, raw)
     print_status("reviewer", used)
 
@@ -83,14 +80,6 @@ def run():
 
     print("[Reviewer] Verdict: " + result["overall_verdict"])
     print("[Reviewer] Quality score: " + str(result.get("quality_score", "N/A")))
-    print("[Reviewer] Domain relevance: " + str(result.get("domain_relevance_passed", "N/A")))
-
-    if result.get("strengths"):
-        print("[Reviewer] Strengths:")
-        for s in result["strengths"]:
-            print("  + " + s)
-
     for issue in result.get("issues", []):
         print("  [" + issue["severity"].upper() + "] " + issue["section"] + ": " + issue["description"])
-
     return result

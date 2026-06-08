@@ -1,12 +1,12 @@
 import json
-from groq import Groq
 from memory import state_store, audit_logger
 from memory.token_tracker import log_usage, print_status
+from memory.groq_client import create_client, call_with_retry
 import config
 
 
 def run(chosen_idea_id=None):
-    client = Groq(api_key=config.GROQ_API_KEY)
+    client = create_client()
     ideas = state_store.get_state("idea_candidates")
     input_topic = state_store.get_state("input_topic")
     if not ideas:
@@ -35,10 +35,10 @@ def run(chosen_idea_id=None):
     prompt += "- 8-18 words\n"
     prompt += "- Must include: method/approach + domain + specific contribution\n"
     prompt += "- Never use: novel, first, state-of-the-art, revolutionary\n"
-    prompt += "- Descriptive title: state exactly what was done\n"
-    prompt += "- Punchy title: create a METHOD ACRONYM then colon then subtitle\n"
-    prompt += "  Example: 'XAI-TCNN: Explainable Temporal Convolutional Network for Traffic Prediction'\n"
-    prompt += "- Question title: pose as a research question\n\n"
+    prompt += "- Descriptive: state exactly what was done\n"
+    prompt += "- Punchy: create a METHOD ACRONYM then colon then subtitle\n"
+    prompt += "  Example: XAI-TCNN: Explainable Temporal Convolutional Network for Traffic\n"
+    prompt += "- Question: pose as a research question\n\n"
     prompt += "Return ONLY this JSON:\n"
     prompt += "{\n"
     prompt += '  "descriptive": "title stating exactly what was done with domain",\n'
@@ -49,21 +49,17 @@ def run(chosen_idea_id=None):
     prompt += '  "rationale": "why this title is best for ' + venue + '"\n'
     prompt += "}"
 
-    response = client.chat.completions.create(
-        model=config.MODEL,
+    raw = call_with_retry(
+        client,
         messages=[
-            {"role": "system", "content": (
-                "IEEE paper title expert. "
-                "Always create a memorable method acronym for the punchy title. "
-                "Return ONLY valid JSON."
-            )},
+            {"role": "system", "content": "IEEE paper title expert. Always create a memorable method acronym. Return ONLY valid JSON."},
             {"role": "user", "content": prompt}
         ],
         max_tokens=800,
-        temperature=0.7
+        temperature=0.7,
+        agent_name="title_agent"
     )
 
-    raw = response.choices[0].message.content.strip()
     used = log_usage("title_agent", prompt, raw)
     print_status("title_agent", used)
 
@@ -73,7 +69,6 @@ def run(chosen_idea_id=None):
             raw = raw[4:]
 
     result = json.loads(raw)
-
     rec = result.get("recommended", "punchy")
     if rec not in ["descriptive", "punchy", "question_form"]:
         result["recommended"] = "punchy"
@@ -81,7 +76,6 @@ def run(chosen_idea_id=None):
 
     state_store.update_state("title_options", result)
     audit_logger.log("title_agent", {"idea_id": idea["idea_id"]}, result)
-
     print("[TitleAgent] Acronym: " + result.get("method_acronym", "N/A"))
     print("[TitleAgent] Recommended: " + result.get(rec, ""))
     return result

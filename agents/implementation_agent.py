@@ -76,29 +76,66 @@ print("Class balance: " + str(np.bincount(y)))
 cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
 metrics = []
 
-print("Training Random Forest...")
-rf = RandomForestClassifier(n_estimators=100, random_state=42, n_jobs=-1)
+# ── Hyperparameter Optimization with Optuna ───────────────────
+try:
+    import optuna
+    optuna.logging.set_verbosity(optuna.logging.WARNING)
+    HAS_OPTUNA = True
+except ImportError:
+    HAS_OPTUNA = False
+    print("Optuna not installed, using default hyperparameters")
+
+def optimize_rf(X, y, cv, n_trials=15):
+    if not HAS_OPTUNA:
+        return {"n_estimators": 100, "max_depth": None, "min_samples_split": 2}
+    def objective(trial):
+        params = {
+            "n_estimators": trial.suggest_int("n_estimators", 50, 200),
+            "max_depth": trial.suggest_int("max_depth", 3, 20),
+            "min_samples_split": trial.suggest_int("min_samples_split", 2, 10),
+            "random_state": 42, "n_jobs": -1
+        }
+        model = RandomForestClassifier(**params)
+        score = cross_val_score(model, X, y, cv=3, scoring="accuracy").mean()
+        return score
+    study = optuna.create_study(direction="maximize")
+    study.optimize(objective, n_trials=n_trials, show_progress_bar=False)
+    print("  Best RF params: " + str(study.best_params))
+    return study.best_params
+
+def optimize_gb(X, y, cv, n_trials=15):
+    if not HAS_OPTUNA:
+        return {"n_estimators": 100, "learning_rate": 0.1, "max_depth": 3}
+    def objective(trial):
+        params = {
+            "n_estimators": trial.suggest_int("n_estimators", 50, 200),
+            "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.3),
+            "max_depth": trial.suggest_int("max_depth", 2, 8),
+            "random_state": 42
+        }
+        model = GradientBoostingClassifier(**params)
+        score = cross_val_score(model, X, y, cv=3, scoring="accuracy").mean()
+        return score
+    study = optuna.create_study(direction="maximize")
+    study.optimize(objective, n_trials=n_trials, show_progress_bar=False)
+    print("  Best GB params: " + str(study.best_params))
+    return study.best_params
+
+print("Optimizing Random Forest hyperparameters...")
+best_rf_params = optimize_rf(X, y, cv)
+rf = RandomForestClassifier(**{**best_rf_params, "random_state": 42, "n_jobs": -1})
 rf_acc  = cross_val_score(rf, X, y, cv=cv, scoring="accuracy")
 rf_f1   = cross_val_score(rf, X, y, cv=cv, scoring="f1_weighted")
 rf_prec = cross_val_score(rf, X, y, cv=cv, scoring="precision_weighted")
 rf_rec  = cross_val_score(rf, X, y, cv=cv, scoring="recall_weighted")
 print("RF  Acc: {:.4f} +/- {:.4f}".format(rf_acc.mean(), rf_acc.std()))
 
-metrics.append({"metric_name": "RF_accuracy",  "mean": round(float(rf_acc.mean()),4), "std": round(float(rf_acc.std()),4), "n_runs": 5})
-metrics.append({"metric_name": "RF_f1_score",  "mean": round(float(rf_f1.mean()),4),  "std": round(float(rf_f1.std()),4),  "n_runs": 5})
-metrics.append({"metric_name": "RF_precision", "mean": round(float(rf_prec.mean()),4),"std": round(float(rf_prec.std()),4),"n_runs": 5})
-metrics.append({"metric_name": "RF_recall",    "mean": round(float(rf_rec.mean()),4), "std": round(float(rf_rec.std()),4), "n_runs": 5})
-
-print("Training Gradient Boosting...")
-gb = GradientBoostingClassifier(n_estimators=100, random_state=42)
+print("Optimizing Gradient Boosting hyperparameters...")
+best_gb_params = optimize_gb(X, y, cv)
+gb = GradientBoostingClassifier(**{**best_gb_params, "random_state": 42})
 gb_acc = cross_val_score(gb, X, y, cv=cv, scoring="accuracy")
 gb_f1  = cross_val_score(gb, X, y, cv=cv, scoring="f1_weighted")
-print("GB  Acc: {:.4f} +/- {:.4f}".format(gb_acc.mean(), gb_acc.std()))
-metrics.append({"metric_name": "GB_accuracy", "mean": round(float(gb_acc.mean()),4), "std": round(float(gb_acc.std()),4), "n_runs": 5})
-metrics.append({"metric_name": "GB_f1_score", "mean": round(float(gb_f1.mean()),4),  "std": round(float(gb_f1.std()),4),  "n_runs": 5})
-
-xgb_acc = np.array([0.0])
-lgb_acc = np.array([0.0])
+print("GB  Acc: {:.4f} +/- {:.4f}".format(gb_acc.mean(), gb_acc.std()))lgb_acc = np.array([0.0])
 
 if HAS_XGB:
     print("Training XGBoost...")
@@ -310,8 +347,81 @@ results = {
 with open("outputs/code/results.json", "w") as f:
     json.dump(results, f, indent=2)
 
+# ── SHAP Analysis ─────────────────────────────────────────────
+try:
+    import shap
+    print("Running SHAP analysis...")
+    rf_sample = RandomForestClassifier(n_estimators=50, random_state=42)
+    sample_size = min(500, len(X))
+    X_sample = X[:sample_size]
+    y_sample = y[:sample_size]
+    rf_sample.fit(X_sample, y_sample)
+
+    explainer = shap.TreeExplainer(rf_sample)
+    shap_values = explainer.shap_values(X_sample[:100])
+
+    if isinstance(shap_values, list):
+        shap_vals = shap_values[1]
+    else:
+        shap_vals = shap_values
+
+    fig_shap, axes_shap = plt.subplots(1, 2, figsize=(16, 6))
+
+    shap_mean = np.abs(shap_vals).mean(axis=0)
+    shap_indices = np.argsort(shap_mean)[::-1]
+    axes_shap[0].barh(
+        [feature_names[i] for i in shap_indices[:10]][::-1],
+        shap_mean[shap_indices[:10]][::-1],
+        color="#E65100", alpha=0.85
+    )
+    axes_shap[0].set_title("Fig. 7a: SHAP Feature Importance\n(Mean |SHAP value|)",
+                            fontsize=12, fontweight="bold")
+    axes_shap[0].set_xlabel("Mean |SHAP Value|")
+
+    shap_pos = np.mean(shap_vals > 0, axis=0)
+    shap_neg = 1 - shap_pos
+    x_pos = np.arange(min(8, len(feature_names)))
+    top_features_idx = shap_indices[:8]
+    axes_shap[1].barh(
+        [feature_names[i] for i in top_features_idx][::-1],
+        shap_pos[top_features_idx][::-1],
+        color="#2196F3", alpha=0.85, label="Positive impact"
+    )
+    axes_shap[1].barh(
+        [feature_names[i] for i in top_features_idx][::-1],
+        -shap_neg[top_features_idx][::-1],
+        color="#F44336", alpha=0.85, label="Negative impact"
+    )
+    axes_shap[1].set_title("Fig. 7b: SHAP Direction Analysis\n(Positive vs Negative Impact)",
+                            fontsize=12, fontweight="bold")
+    axes_shap[1].set_xlabel("Proportion of samples")
+    axes_shap[1].legend(fontsize=9)
+    axes_shap[1].axvline(x=0, color="black", linewidth=0.8)
+
+    plt.tight_layout()
+    plt.savefig("outputs/plots/fig6_shap_analysis.png", dpi=150, bbox_inches="tight")
+    plt.close()
+    print("Fig 7 saved: SHAP analysis")
+
+    shap_summary = {
+        "top_features_by_shap": [feature_names[i] for i in shap_indices[:5]],
+        "shap_values_mean": [round(float(shap_mean[i]), 4) for i in shap_indices[:5]]
+    }
+    results["shap_analysis"] = shap_summary
+    plot_files.append("outputs/plots/fig6_shap_analysis.png")
+
+except ImportError:
+    print("SHAP not installed, skipping SHAP analysis")
+except Exception as e:
+    print("SHAP analysis failed: " + str(e))
+
+results["plot_files"] = plot_files
+
+with open("outputs/code/results.json", "w") as f:
+    json.dump(results, f, indent=2)
+
 print("Results saved.")
-print("EXPERIMENT COMPLETE — 5 figures generated")
+print("EXPERIMENT COMPLETE — " + str(len(plot_files)) + " figures generated")
 '''
 
 

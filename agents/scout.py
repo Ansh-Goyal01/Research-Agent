@@ -1,13 +1,13 @@
 import json
-from groq import Groq
 from tools.paper_search import search_papers
 from memory import state_store, audit_logger
 from memory.token_tracker import log_usage, print_status
+from memory.groq_client import create_client, call_with_retry
 import config
 
 
 def run(topic_data):
-    client = Groq(api_key=config.GROQ_API_KEY)
+    client = create_client()
     topic = topic_data["topic"]
     start_year = topic_data.get("date_range", [2021, 2025])[0]
     max_papers = topic_data.get("max_papers", 20)
@@ -54,21 +54,20 @@ def run(topic_data):
         "\n\nFor each paper return a JSON array with fields: "
         "title, authors, year, venue, url, abstract_summary (2 sentences max), "
         "key_contributions (2 points max), stated_limitations (2 points max), "
-        "semantic_scholar_id. "
-        "Return ONLY the JSON array. Be concise."
+        "semantic_scholar_id. Return ONLY the JSON array. Be concise."
     )
 
-    response = client.chat.completions.create(
-        model=config.MODEL,
+    raw_output = call_with_retry(
+        client,
         messages=[
             {"role": "system", "content": "Literature scout. Return ONLY valid JSON arrays. Be concise."},
             {"role": "user", "content": prompt}
         ],
         max_tokens=2048,
-        temperature=0.3
+        temperature=0.3,
+        agent_name="scout"
     )
 
-    raw_output = response.choices[0].message.content.strip()
     used = log_usage("scout", prompt, raw_output)
     print_status("scout", used)
 
