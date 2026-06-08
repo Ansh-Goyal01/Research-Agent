@@ -1,8 +1,8 @@
 import json
-from groq import Groq
 from tools import file_manager, code_executor
 from memory import state_store, audit_logger
 from memory.token_tracker import log_usage, print_status
+from memory.groq_client import create_client, call_with_retry
 import config
 
 SAFE_EXPERIMENT_CODE = '''
@@ -15,9 +15,8 @@ warnings.filterwarnings("ignore")
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridspec
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
-from sklearn.model_selection import cross_val_score, StratifiedKFold, learning_curve
+from sklearn.model_selection import cross_val_score, StratifiedKFold, cross_val_predict
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 from sklearn.datasets import load_breast_cancer
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
@@ -34,6 +33,21 @@ try:
     HAS_LGB = True
 except ImportError:
     HAS_LGB = False
+
+try:
+    import optuna
+    optuna.logging.set_verbosity(optuna.logging.WARNING)
+    HAS_OPTUNA = True
+except ImportError:
+    HAS_OPTUNA = False
+    print("Optuna not installed, using default hyperparameters")
+
+try:
+    import shap
+    HAS_SHAP = True
+except ImportError:
+    HAS_SHAP = False
+    print("SHAP not installed, skipping SHAP analysis")
 
 os.makedirs("outputs/plots", exist_ok=True)
 os.makedirs("outputs/code", exist_ok=True)
@@ -76,16 +90,8 @@ print("Class balance: " + str(np.bincount(y)))
 cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
 metrics = []
 
-# ── Hyperparameter Optimization with Optuna ───────────────────
-try:
-    import optuna
-    optuna.logging.set_verbosity(optuna.logging.WARNING)
-    HAS_OPTUNA = True
-except ImportError:
-    HAS_OPTUNA = False
-    print("Optuna not installed, using default hyperparameters")
 
-def optimize_rf(X, y, cv, n_trials=15):
+def optimize_rf(X, y, n_trials=15):
     if not HAS_OPTUNA:
         return {"n_estimators": 100, "max_depth": None, "min_samples_split": 2}
     def objective(trial):
@@ -95,15 +101,14 @@ def optimize_rf(X, y, cv, n_trials=15):
             "min_samples_split": trial.suggest_int("min_samples_split", 2, 10),
             "random_state": 42, "n_jobs": -1
         }
-        model = RandomForestClassifier(**params)
-        score = cross_val_score(model, X, y, cv=3, scoring="accuracy").mean()
-        return score
+        return cross_val_score(RandomForestClassifier(**params), X, y, cv=3, scoring="accuracy").mean()
     study = optuna.create_study(direction="maximize")
     study.optimize(objective, n_trials=n_trials, show_progress_bar=False)
     print("  Best RF params: " + str(study.best_params))
     return study.best_params
 
-def optimize_gb(X, y, cv, n_trials=15):
+
+def optimize_gb(X, y, n_trials=15):
     if not HAS_OPTUNA:
         return {"n_estimators": 100, "learning_rate": 0.1, "max_depth": 3}
     def objective(trial):
@@ -113,29 +118,37 @@ def optimize_gb(X, y, cv, n_trials=15):
             "max_depth": trial.suggest_int("max_depth", 2, 8),
             "random_state": 42
         }
-        model = GradientBoostingClassifier(**params)
-        score = cross_val_score(model, X, y, cv=3, scoring="accuracy").mean()
-        return score
+        return cross_val_score(GradientBoostingClassifier(**params), X, y, cv=3, scoring="accuracy").mean()
     study = optuna.create_study(direction="maximize")
     study.optimize(objective, n_trials=n_trials, show_progress_bar=False)
     print("  Best GB params: " + str(study.best_params))
     return study.best_params
 
+
 print("Optimizing Random Forest hyperparameters...")
-best_rf_params = optimize_rf(X, y, cv)
+best_rf_params = optimize_rf(X, y)
 rf = RandomForestClassifier(**{**best_rf_params, "random_state": 42, "n_jobs": -1})
 rf_acc  = cross_val_score(rf, X, y, cv=cv, scoring="accuracy")
 rf_f1   = cross_val_score(rf, X, y, cv=cv, scoring="f1_weighted")
 rf_prec = cross_val_score(rf, X, y, cv=cv, scoring="precision_weighted")
 rf_rec  = cross_val_score(rf, X, y, cv=cv, scoring="recall_weighted")
 print("RF  Acc: {:.4f} +/- {:.4f}".format(rf_acc.mean(), rf_acc.std()))
+metrics.append({"metric_name": "RF_accuracy",  "mean": round(float(rf_acc.mean()),4),  "std": round(float(rf_acc.std()),4),  "n_runs": 5})
+metrics.append({"metric_name": "RF_f1_score",  "mean": round(float(rf_f1.mean()),4),   "std": round(float(rf_f1.std()),4),   "n_runs": 5})
+metrics.append({"metric_name": "RF_precision", "mean": round(float(rf_prec.mean()),4), "std": round(float(rf_prec.std()),4), "n_runs": 5})
+metrics.append({"metric_name": "RF_recall",    "mean": round(float(rf_rec.mean()),4),  "std": round(float(rf_rec.std()),4),  "n_runs": 5})
 
 print("Optimizing Gradient Boosting hyperparameters...")
-best_gb_params = optimize_gb(X, y, cv)
+best_gb_params = optimize_gb(X, y)
 gb = GradientBoostingClassifier(**{**best_gb_params, "random_state": 42})
 gb_acc = cross_val_score(gb, X, y, cv=cv, scoring="accuracy")
 gb_f1  = cross_val_score(gb, X, y, cv=cv, scoring="f1_weighted")
-print("GB  Acc: {:.4f} +/- {:.4f}".format(gb_acc.mean(), gb_acc.std()))lgb_acc = np.array([0.0])
+print("GB  Acc: {:.4f} +/- {:.4f}".format(gb_acc.mean(), gb_acc.std()))
+metrics.append({"metric_name": "GB_accuracy", "mean": round(float(gb_acc.mean()),4), "std": round(float(gb_acc.std()),4), "n_runs": 5})
+metrics.append({"metric_name": "GB_f1_score", "mean": round(float(gb_f1.mean()),4),  "std": round(float(gb_f1.std()),4),  "n_runs": 5})
+
+xgb_acc = np.array([0.0])
+lgb_acc = np.array([0.0])
 
 if HAS_XGB:
     print("Training XGBoost...")
@@ -157,13 +170,14 @@ if HAS_LGB:
 
 t_stat, p_value = stats.ttest_rel(rf_acc, gb_acc)
 significance = "statistically significant (p<0.05)" if p_value < 0.05 else "not statistically significant"
-print("Paired t-test RF vs GB: t={:.4f}, p={:.4f}".format(t_stat, p_value))
+print("Paired t-test RF vs GB: t={:.4f}, p={:.4f} - {}".format(t_stat, p_value, significance))
 ci_rf = stats.t.interval(0.95, len(rf_acc)-1, loc=rf_acc.mean(), scale=stats.sem(rf_acc))
 ci_gb = stats.t.interval(0.95, len(gb_acc)-1, loc=gb_acc.mean(), scale=stats.sem(gb_acc))
+print("RF 95% CI: ({:.4f}, {:.4f})".format(ci_rf[0], ci_rf[1]))
 
-metrics.append({"metric_name": "p_value_rf_vs_gb", "mean": round(float(p_value),4),   "std": 0.0, "n_runs": 1})
-metrics.append({"metric_name": "rf_95ci_lower",    "mean": round(float(ci_rf[0]),4),   "std": 0.0, "n_runs": 1})
-metrics.append({"metric_name": "rf_95ci_upper",    "mean": round(float(ci_rf[1]),4),   "std": 0.0, "n_runs": 1})
+metrics.append({"metric_name": "p_value_rf_vs_gb", "mean": round(float(p_value),4),  "std": 0.0, "n_runs": 1})
+metrics.append({"metric_name": "rf_95ci_lower",    "mean": round(float(ci_rf[0]),4), "std": 0.0, "n_runs": 1})
+metrics.append({"metric_name": "rf_95ci_upper",    "mean": round(float(ci_rf[1]),4), "std": 0.0, "n_runs": 1})
 
 rf.fit(X, y)
 importances = rf.feature_importances_
@@ -221,13 +235,13 @@ plt.savefig("outputs/plots/fig1_feature_importance.png", dpi=150, bbox_inches="t
 plt.close()
 print("Fig 1 saved: feature importance")
 
-# ── FIGURE 2: Model Comparison Bar Chart ──────────────────────
+# ── FIGURE 2: Model Comparison ────────────────────────────────
 fig2, ax2 = plt.subplots(figsize=(10,6))
 x = np.arange(len(model_names))
 bars2 = ax2.bar(x, [a*100 for a in accuracies],
                 yerr=[s*100 for s in stds],
                 color=COLORS[:len(model_names)],
-                capsize=6, alpha=0.88, edgecolor="white", linewidth=0.5,
+                capsize=6, alpha=0.88, edgecolor="white",
                 error_kw={"elinewidth":2,"ecolor":"#333333"})
 ax2.set_xticks(x)
 ax2.set_xticklabels(model_names, fontsize=11)
@@ -244,13 +258,12 @@ plt.savefig("outputs/plots/fig2_model_comparison.png", dpi=150, bbox_inches="tig
 plt.close()
 print("Fig 2 saved: model comparison")
 
-# ── FIGURE 3: Cross-Validation Score Distribution (Box Plot) ──
+# ── FIGURE 3: CV Distribution ─────────────────────────────────
 fig3, ax3 = plt.subplots(figsize=(10,6))
 bp = ax3.boxplot(
     [s*100 for s in all_scores],
     labels=model_names,
     patch_artist=True,
-    notch=False,
     medianprops={"color":"white","linewidth":2.5}
 )
 for patch, color in zip(bp["boxes"], COLORS[:len(model_names)]):
@@ -265,7 +278,7 @@ plt.savefig("outputs/plots/fig3_cv_distribution.png", dpi=150, bbox_inches="tigh
 plt.close()
 print("Fig 3 saved: CV distribution")
 
-# ── FIGURE 4: Ablation Study ───────────────────────────────────
+# ── FIGURE 4: Ablation Study ──────────────────────────────────
 ablation_labels = ["All Features\\n(" + str(len(feature_names)) + ")", "Top-5 XAI\\nFeatures"]
 ablation_vals   = [rf_acc.mean()*100, rf_top5_acc.mean()*100]
 ablation_stds   = [rf_acc.std()*100,  rf_top5_acc.std()*100]
@@ -282,7 +295,7 @@ for bar, val, std in zip(bars4, ablation_vals, ablation_stds):
     ax4.text(bar.get_x()+bar.get_width()/2, bar.get_height()+std+0.3,
              "{:.2f}%".format(val), ha="center", va="bottom", fontsize=11, fontweight="bold")
 diff = ablation_vals[0] - ablation_vals[1]
-ax4.annotate("Δ = {:.2f}%".format(diff),
+ax4.annotate("Delta = {:.2f}%".format(diff),
              xy=(0.5, max(ablation_vals)-1),
              xycoords="data", ha="center", fontsize=11,
              color="#333333", style="italic")
@@ -291,10 +304,9 @@ fig4.patch.set_facecolor("white")
 plt.tight_layout()
 plt.savefig("outputs/plots/fig4_ablation.png", dpi=150, bbox_inches="tight")
 plt.close()
-print("Fig 4 saved: ablation study")
+print("Fig 4 saved: ablation")
 
 # ── FIGURE 5: Confusion Matrix ────────────────────────────────
-from sklearn.model_selection import cross_val_predict
 rf_preds = cross_val_predict(rf, X, y, cv=cv)
 cm = confusion_matrix(y, rf_preds)
 fig5, ax5 = plt.subplots(figsize=(7,6))
@@ -325,11 +337,10 @@ results = {
         "Random Forest: {:.1f}% (95% CI: {:.1f}%-{:.1f}%)".format(
             rf_acc.mean()*100, ci_rf[0]*100, ci_rf[1]*100),
         "Gradient Boosting: {:.1f}%".format(gb_acc.mean()*100),
-        "Statistical significance: t={:.4f}, p={:.4f} ({})".format(t_stat, p_value, significance),
-        "Top-5 XAI features: {:.1f}% (validates feature importance)".format(rf_top5_acc.mean()*100),
+        "Statistical: t={:.4f}, p={:.4f} ({})".format(t_stat, p_value, significance),
+        "Top-5 XAI features: {:.1f}%".format(rf_top5_acc.mean()*100),
         "Most important features: " + ", ".join(top5[:3]),
-        "Dataset: " + dataset_name + " | Samples: " + str(X.shape[0]),
-        "5 figures generated in outputs/plots/"
+        "Dataset: " + dataset_name + " | Samples: " + str(X.shape[0])
     ],
     "statistical_tests": {
         "paired_ttest_rf_vs_gb": {
@@ -344,76 +355,71 @@ results = {
     }
 }
 
-with open("outputs/code/results.json", "w") as f:
-    json.dump(results, f, indent=2)
+# ── FIGURE 6: SHAP Analysis ───────────────────────────────────
+if HAS_SHAP:
+    try:
+        print("Running SHAP analysis...")
+        rf_sample = RandomForestClassifier(n_estimators=50, random_state=42)
+        sample_size = min(500, len(X))
+        X_sample = X[:sample_size]
+        y_sample = y[:sample_size]
+        rf_sample.fit(X_sample, y_sample)
 
-# ── SHAP Analysis ─────────────────────────────────────────────
-try:
-    import shap
-    print("Running SHAP analysis...")
-    rf_sample = RandomForestClassifier(n_estimators=50, random_state=42)
-    sample_size = min(500, len(X))
-    X_sample = X[:sample_size]
-    y_sample = y[:sample_size]
-    rf_sample.fit(X_sample, y_sample)
+        explainer = shap.TreeExplainer(rf_sample)
+        shap_values = explainer.shap_values(X_sample[:100])
 
-    explainer = shap.TreeExplainer(rf_sample)
-    shap_values = explainer.shap_values(X_sample[:100])
+        if isinstance(shap_values, list):
+            shap_vals = shap_values[1]
+        else:
+            shap_vals = shap_values
 
-    if isinstance(shap_values, list):
-        shap_vals = shap_values[1]
-    else:
-        shap_vals = shap_values
+        fig_shap, axes_shap = plt.subplots(1, 2, figsize=(16, 6))
 
-    fig_shap, axes_shap = plt.subplots(1, 2, figsize=(16, 6))
+        shap_mean = np.abs(shap_vals).mean(axis=0)
+        shap_indices = np.argsort(shap_mean)[::-1]
 
-    shap_mean = np.abs(shap_vals).mean(axis=0)
-    shap_indices = np.argsort(shap_mean)[::-1]
-    axes_shap[0].barh(
-        [feature_names[i] for i in shap_indices[:10]][::-1],
-        shap_mean[shap_indices[:10]][::-1],
-        color="#E65100", alpha=0.85
-    )
-    axes_shap[0].set_title("Fig. 7a: SHAP Feature Importance\n(Mean |SHAP value|)",
-                            fontsize=12, fontweight="bold")
-    axes_shap[0].set_xlabel("Mean |SHAP Value|")
+        axes_shap[0].barh(
+            [feature_names[i] for i in shap_indices[:10]][::-1],
+            shap_mean[shap_indices[:10]][::-1],
+            color="#E65100", alpha=0.85
+        )
+        axes_shap[0].set_title("Fig. 6a: SHAP Feature Importance\n(Mean |SHAP value|)",
+                                fontsize=12, fontweight="bold")
+        axes_shap[0].set_xlabel("Mean |SHAP Value|")
 
-    shap_pos = np.mean(shap_vals > 0, axis=0)
-    shap_neg = 1 - shap_pos
-    x_pos = np.arange(min(8, len(feature_names)))
-    top_features_idx = shap_indices[:8]
-    axes_shap[1].barh(
-        [feature_names[i] for i in top_features_idx][::-1],
-        shap_pos[top_features_idx][::-1],
-        color="#2196F3", alpha=0.85, label="Positive impact"
-    )
-    axes_shap[1].barh(
-        [feature_names[i] for i in top_features_idx][::-1],
-        -shap_neg[top_features_idx][::-1],
-        color="#F44336", alpha=0.85, label="Negative impact"
-    )
-    axes_shap[1].set_title("Fig. 7b: SHAP Direction Analysis\n(Positive vs Negative Impact)",
-                            fontsize=12, fontweight="bold")
-    axes_shap[1].set_xlabel("Proportion of samples")
-    axes_shap[1].legend(fontsize=9)
-    axes_shap[1].axvline(x=0, color="black", linewidth=0.8)
+        shap_pos = np.mean(shap_vals > 0, axis=0)
+        shap_neg = 1 - shap_pos
+        top_features_idx = shap_indices[:8]
 
-    plt.tight_layout()
-    plt.savefig("outputs/plots/fig6_shap_analysis.png", dpi=150, bbox_inches="tight")
-    plt.close()
-    print("Fig 7 saved: SHAP analysis")
+        axes_shap[1].barh(
+            [feature_names[i] for i in top_features_idx][::-1],
+            shap_pos[top_features_idx][::-1],
+            color="#2196F3", alpha=0.85, label="Positive impact"
+        )
+        axes_shap[1].barh(
+            [feature_names[i] for i in top_features_idx][::-1],
+            -shap_neg[top_features_idx][::-1],
+            color="#F44336", alpha=0.85, label="Negative impact"
+        )
+        axes_shap[1].set_title("Fig. 6b: SHAP Direction Analysis\n(Positive vs Negative Impact)",
+                                fontsize=12, fontweight="bold")
+        axes_shap[1].set_xlabel("Proportion of samples")
+        axes_shap[1].legend(fontsize=9)
+        axes_shap[1].axvline(x=0, color="black", linewidth=0.8)
 
-    shap_summary = {
-        "top_features_by_shap": [feature_names[i] for i in shap_indices[:5]],
-        "shap_values_mean": [round(float(shap_mean[i]), 4) for i in shap_indices[:5]]
-    }
-    results["shap_analysis"] = shap_summary
-    plot_files.append("outputs/plots/fig6_shap_analysis.png")
+        plt.tight_layout()
+        plt.savefig("outputs/plots/fig6_shap_analysis.png", dpi=150, bbox_inches="tight")
+        plt.close()
+        print("Fig 6 saved: SHAP analysis")
 
-except ImportError:
-    print("SHAP not installed, skipping SHAP analysis")
-except Exception as e:
-    print("SHAP analysis failed: " + str(e))
+        results["shap_analysis"] = {
+            "top_features_by_shap": [feature_names[i] for i in shap_indices[:5]],
+            "shap_values_mean": [round(float(shap_mean[i]), 4) for i in shap_indices[:5]]
+        }
+        plot_files.append("outputs/plots/fig6_shap_analysis.png")
+
+    except Exception as e:
+        print("SHAP analysis failed: " + str(e))
 
 results["plot_files"] = plot_files
 
@@ -426,7 +432,7 @@ print("EXPERIMENT COMPLETE — " + str(len(plot_files)) + " figures generated")
 
 
 def run():
-    client = Groq(api_key=config.GROQ_API_KEY)
+    client = create_client()
     experiment_plan = state_store.get_state("experiment_plan")
     chosen_idea     = state_store.get_state("chosen_idea")
     input_topic     = state_store.get_state("input_topic")
@@ -440,7 +446,7 @@ def run():
     file_manager.safe_write(script_path, SAFE_EXPERIMENT_CODE)
     print("[ImplementationAgent] Running experiment...")
 
-    result = code_executor.run_script(script_path, timeout=180)
+    result = code_executor.run_script(script_path, timeout=300)
 
     if not result["success"]:
         print("[ImplementationAgent] Safe code failed, trying LLM fallback...")
@@ -451,26 +457,28 @@ def run():
         prompt += "Include 5-fold cross validation\n"
         prompt += "Include RandomForest and GradientBoosting\n"
         prompt += "Include scipy.stats.ttest_rel for significance testing\n"
-        prompt += "Generate 4 plots saved to outputs/plots/ as fig1_*.png, fig2_*.png etc\n"
+        prompt += "Generate plots saved to outputs/plots/ as fig1_*.png etc\n"
         prompt += "Save results to outputs/code/results.json\n"
         prompt += "Format: {metrics:[{metric_name,mean,std,n_runs}], hypothesis_verdict, key_findings, plot_files:[...]}\n"
-        prompt += "Must complete in 90 seconds on CPU\n"
+        prompt += "Must complete in 120 seconds on CPU\n"
         prompt += "Return ONLY Python code.\n"
-        prompt += "Error: " + result["stderr"][:300]
+        prompt += "Error from previous attempt: " + result["stderr"][:300]
 
-        response = client.chat.completions.create(
-            model=config.MODEL,
+        raw = call_with_retry(
+            client,
             messages=[
                 {"role": "system", "content": "Python ML engineer. Return ONLY runnable code."},
                 {"role": "user", "content": prompt}
             ],
             max_tokens=config.MAX_TOKENS,
-            temperature=0.2
+            temperature=0.2,
+            agent_name="implementation_agent"
         )
-        code = response.choices[0].message.content.strip()
-        used = log_usage("implementation_agent", prompt, code)
+
+        used = log_usage("implementation_agent", prompt, raw)
         print_status("implementation_agent", used)
 
+        code = raw
         if "```" in code:
             code = code.split("```")[1]
             if code.startswith("python"):
