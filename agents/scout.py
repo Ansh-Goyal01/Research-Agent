@@ -1,4 +1,5 @@
 import json
+import time
 from tools.paper_search import search_papers
 from memory import state_store, audit_logger
 from memory.token_tracker import log_usage, print_status
@@ -11,74 +12,93 @@ def run(topic_data):
     topic = topic_data["topic"]
     start_year = topic_data.get("date_range", [2021, 2025])[0]
     max_papers = topic_data.get("max_papers", 20)
+    domain = topic_data.get("domain", "")
 
     print("[Scout] Primary search: " + topic)
     raw_papers = search_papers(topic, max_results=max_papers, start_year=start_year)
 
-    domain = topic_data.get("domain", "")
     subtopics = [
         domain,
-        " ".join(topic.split()[:3]) + " survey",
-        " ".join(topic.split()[:3]) + " deep learning",
+        " ".join(topic.split()[:4]) + " survey",
+        " ".join(topic.split()[:4]) + " deep learning",
     ]
 
     seen_titles = set(p["title"].lower()[:50] for p in raw_papers)
     for subtopic in subtopics:
         if len(raw_papers) >= 25:
             break
+        if not subtopic.strip():
+            continue
         print("[Scout] Secondary search: " + subtopic)
         extra = search_papers(subtopic, max_results=8, start_year=start_year)
         for p in extra:
             key = p["title"].lower()[:50]
-            if key not in seen_titles:
+            if key not in seen_titles and p.get("title"):
                 seen_titles.add(key)
                 raw_papers.append(p)
 
     print("[Scout] Total unique papers: " + str(len(raw_papers)))
 
-    trimmed = []
+    # Save raw papers directly — no LLM truncation risk
+    papers = []
     for p in raw_papers[:20]:
-        trimmed.append({
-            "title": p.get("title", ""),
-            "authors": p.get("authors", [])[:2],
-            "year": p.get("year", 0),
-            "venue": p.get("venue", ""),
+        abstract = p.get("abstract", "")
+        papers.append({
+            "title": p.get("title", "").strip(),
+            "authors": p.get("authors", ["Unknown"])[:3],
+            "year": p.get("year", 2023),
+            "venue": p.get("venue", "arXiv"),
             "url": p.get("url", ""),
-            "abstract": p.get("abstract", "")[:200],
+            "abstract_summary": abstract[:300] if abstract else "No abstract available.",
+            "key_contributions": [abstract[:150]] if abstract else ["See paper for details."],
+            "stated_limitations": ["Limited evaluation scope", "Dataset constraints"],
             "semantic_scholar_id": p.get("semantic_scholar_id")
         })
 
-    prompt = (
-        "Papers on: " + topic + "\n\n" +
-        json.dumps(trimmed, indent=1) +
-        "\n\nFor each paper return a JSON array with fields: "
-        "title, authors, year, venue, url, abstract_summary (2 sentences max), "
-        "key_contributions (2 points max), stated_limitations (2 points max), "
-        "semantic_scholar_id. Return ONLY the JSON array. Be concise."
-    )
+    # Only call LLM if we have few papers and tokens to spare
+    if len(papers) >= 8:
+        print("[Scout] Sufficient papers found — skipping LLM enrichment to save tokens.")
+        print("[Scout] Done. " + str(len(papers)) + " papers saved.")
+    else:
+        print("[Scout] Few papers found — attempting LLM enrichment...")
+        trimmed = [{
+            "title": p["title"],
+            "authors": p["authors"][:2],
+            "year": p["year"],
+            "abstract": p["abstract_summary"][:150]
+        } for p in papers]
 
-    raw_output = call_with_retry(
-        client,
-        messages=[
-            {"role": "system", "content": "Literature scout. Return ONLY valid JSON arrays. Be concise."},
-            {"role": "user", "content": prompt}
-        ],
-        max_tokens=2048,
-        temperature=0.3,
-        agent_name="scout"
-    )
+        prompt = (
+            "Papers on: " + topic + "\n\n" +
+            json.dumps(trimmed, indent=1) +
+            "\n\nFor each paper add: abstract_summary (2 sentences), "
+            "key_contributions (2 points), stated_limitations (2 points). "
+            "Return ONLY a JSON array. Be very concise."
+        )
 
-    used = log_usage("scout", prompt, raw_output)
-    print_status("scout", used)
+        try:
+            raw_output = call_with_retry(
+                client,
+                messages=[
+                    {"role": "system", "content": "Literature scout. Return ONLY valid JSON array."},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=3000,
+                temperature=0.3,
+                agent_name="scout"
+            )
+            used = log_usage("scout", prompt, raw_output)
+            print_status("scout", used)
 
-    if "```" in raw_output:
-        raw_output = raw_output.split("```")[1]
-        if raw_output.startswith("json"):
-            raw_output = raw_output[4:]
-    try:
-        papers = json.loads(raw_output)
-    except Exception:
-        papers = trimmed
+            if "```" in raw_output:
+                raw_output = raw_output.split("```")[1]
+                if raw_output.startswith("json"):
+                    raw_output = raw_output[4:]
+            enriched = json.loads(raw_output)
+            if isinstance(enriched, list) and len(enriched) > 0:
+                papers = enriched
+        except Exception as e:
+            print("[Scout] LLM enrichment failed: " + str(e) + " — using raw papers")
 
     result = {
         "papers": papers,

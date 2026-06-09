@@ -50,7 +50,6 @@ except ImportError:
 os.makedirs("outputs/plots", exist_ok=True)
 os.makedirs("outputs/code", exist_ok=True)
 
-# ── Dataset Loading ────────────────────────────────────────────
 print("Loading dataset...")
 try:
     url = "https://archive.ics.uci.edu/ml/machine-learning-databases/00492/Metro_Interstate_Traffic_Volume.csv.gz"
@@ -82,15 +81,16 @@ print("Class balance: " + str(np.bincount(y)))
 
 cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
 
-# ── Hyperparameter Optimization ───────────────────────────────
 def optimize_rf(X, y, n_trials=10):
     if not HAS_OPTUNA:
         return {"n_estimators": 100, "max_depth": 10, "min_samples_split": 2}
     def obj(trial):
-        p = {"n_estimators": trial.suggest_int("n_estimators", 50, 150),
-             "max_depth": trial.suggest_int("max_depth", 3, 15),
-             "min_samples_split": trial.suggest_int("min_samples_split", 2, 8),
-             "random_state": 42, "n_jobs": -1}
+        p = {
+            "n_estimators": trial.suggest_int("n_estimators", 50, 150),
+            "max_depth": trial.suggest_int("max_depth", 3, 15),
+            "min_samples_split": trial.suggest_int("min_samples_split", 2, 8),
+            "random_state": 42, "n_jobs": -1
+        }
         return cross_val_score(RandomForestClassifier(**p), X, y, cv=3, scoring="accuracy").mean()
     s = optuna.create_study(direction="maximize")
     s.optimize(obj, n_trials=n_trials, show_progress_bar=False)
@@ -101,89 +101,88 @@ def optimize_gb(X, y, n_trials=10):
     if not HAS_OPTUNA:
         return {"n_estimators": 100, "learning_rate": 0.1, "max_depth": 3}
     def obj(trial):
-        p = {"n_estimators": trial.suggest_int("n_estimators", 50, 150),
-             "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.2),
-             "max_depth": trial.suggest_int("max_depth", 2, 6),
-             "random_state": 42}
+        p = {
+            "n_estimators": trial.suggest_int("n_estimators", 50, 150),
+            "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.2),
+            "max_depth": trial.suggest_int("max_depth", 2, 6),
+            "random_state": 42
+        }
         return cross_val_score(GradientBoostingClassifier(**p), X, y, cv=3, scoring="accuracy").mean()
     s = optuna.create_study(direction="maximize")
     s.optimize(obj, n_trials=n_trials, show_progress_bar=False)
     print("  Best GB: " + str(s.best_params))
     return s.best_params
 
-print("Optimizing Random Forest...")
+print("Optimizing RF...")
 best_rf = optimize_rf(X, y)
-print("Optimizing Gradient Boosting...")
+print("Optimizing GB...")
 best_gb = optimize_gb(X, y)
 
-# ── Model Training ────────────────────────────────────────────
 rf = RandomForestClassifier(**{**best_rf, "random_state": 42, "n_jobs": -1})
 gb = GradientBoostingClassifier(**{**best_gb, "random_state": 42})
 
 model_results = {}
+metric_names = ["accuracy", "precision", "recall", "f1_score"]
+scoring_map = {
+    "accuracy": "accuracy",
+    "precision": "precision_weighted",
+    "recall": "recall_weighted",
+    "f1_score": "f1_weighted"
+}
 
 for model, name in [(rf, "RandomForest"), (gb, "GradientBoosting")]:
     print("Training " + name + "...")
-    acc  = cross_val_score(model, X, y, cv=cv, scoring="accuracy")
-    prec = cross_val_score(model, X, y, cv=cv, scoring="precision_weighted")
-    rec  = cross_val_score(model, X, y, cv=cv, scoring="recall_weighted")
-    f1   = cross_val_score(model, X, y, cv=cv, scoring="f1_weighted")
-    model_results[name] = {
-        "accuracy":  acc,
-        "precision": prec,
-        "recall":    rec,
-        "f1_score":  f1
-    }
-    print(name + " Acc: {:.4f} +/- {:.4f}".format(acc.mean(), acc.std()))
+    model_results[name] = {}
+    for metric, scorer in scoring_map.items():
+        scores = cross_val_score(model, X, y, cv=cv, scoring=scorer)
+        model_results[name][metric] = scores
+        print("  " + name + " " + metric + ": {:.4f} +/- {:.4f}".format(scores.mean(), scores.std()))
 
-xgb_acc = np.array([0.0])
-lgb_acc = np.array([0.0])
+xgb_scores = {}
+lgb_scores = {}
 
 if HAS_XGB:
     print("Training XGBoost...")
     xgb = XGBClassifier(n_estimators=100, random_state=42, eval_metric="logloss", verbosity=0)
-    xgb_acc  = cross_val_score(xgb, X, y, cv=cv, scoring="accuracy")
-    xgb_prec = cross_val_score(xgb, X, y, cv=cv, scoring="precision_weighted")
-    xgb_rec  = cross_val_score(xgb, X, y, cv=cv, scoring="recall_weighted")
-    xgb_f1   = cross_val_score(xgb, X, y, cv=cv, scoring="f1_weighted")
-    model_results["XGBoost"] = {"accuracy": xgb_acc, "precision": xgb_prec, "recall": xgb_rec, "f1_score": xgb_f1}
-    print("XGB Acc: {:.4f} +/- {:.4f}".format(xgb_acc.mean(), xgb_acc.std()))
+    model_results["XGBoost"] = {}
+    for metric, scorer in scoring_map.items():
+        scores = cross_val_score(xgb, X, y, cv=cv, scoring=scorer)
+        model_results["XGBoost"][metric] = scores
+    print("  XGB accuracy: {:.4f}".format(model_results["XGBoost"]["accuracy"].mean()))
 
 if HAS_LGB:
     print("Training LightGBM...")
     lgb = LGBMClassifier(n_estimators=100, random_state=42, verbosity=-1)
-    lgb_acc  = cross_val_score(lgb, X, y, cv=cv, scoring="accuracy")
-    lgb_prec = cross_val_score(lgb, X, y, cv=cv, scoring="precision_weighted")
-    lgb_rec  = cross_val_score(lgb, X, y, cv=cv, scoring="recall_weighted")
-    lgb_f1   = cross_val_score(lgb, X, y, cv=cv, scoring="f1_weighted")
-    model_results["LightGBM"] = {"accuracy": lgb_acc, "precision": lgb_prec, "recall": lgb_rec, "f1_score": lgb_f1}
-    print("LGB Acc: {:.4f} +/- {:.4f}".format(lgb_acc.mean(), lgb_acc.std()))
+    model_results["LightGBM"] = {}
+    for metric, scorer in scoring_map.items():
+        scores = cross_val_score(lgb, X, y, cv=cv, scoring=scorer)
+        model_results["LightGBM"][metric] = scores
+    print("  LGB accuracy: {:.4f}".format(model_results["LightGBM"]["accuracy"].mean()))
 
-model_names = list(model_results.keys())
-metric_names = ["accuracy", "precision", "recall", "f1_score"]
+model_names_list = list(model_results.keys())
 COLORS = ["#2196F3", "#FF9800", "#4CAF50", "#9C27B0", "#F44336"]
+plt.style.use("seaborn-v0_8-whitegrid")
 
-# ── FIGURE 1: Grouped Metric Comparison ───────────────────────
+# FIGURE 1: Grouped metric comparison
 fig1, ax1 = plt.subplots(figsize=(14, 6))
 x = np.arange(len(metric_names))
-n_models = len(model_names)
-width = 0.8 / n_models
-offset = np.linspace(-(n_models-1)/2 * width, (n_models-1)/2 * width, n_models)
-
-for i, (mname, color) in enumerate(zip(model_names, COLORS)):
-    means = [model_results[mname][m].mean() * 100 for m in metric_names]
-    stds  = [model_results[mname][m].std()  * 100 for m in metric_names]
-    bars = ax1.bar(x + offset[i], means, width, label=mname,
+n_m = len(model_names_list)
+width = 0.75 / n_m
+offsets = np.linspace(-(n_m-1)/2*width, (n_m-1)/2*width, n_m)
+for i, (mname, color) in enumerate(zip(model_names_list, COLORS)):
+    means = [model_results[mname][m].mean()*100 for m in metric_names]
+    stds  = [model_results[mname][m].std()*100  for m in metric_names]
+    bars = ax1.bar(x + offsets[i], means, width, label=mname,
                    color=color, alpha=0.87, yerr=stds, capsize=4,
-                   error_kw={"elinewidth": 1.5, "ecolor": "#333"})
+                   error_kw={"elinewidth":1.5,"ecolor":"#333"})
     for bar, mean in zip(bars, means):
-        ax1.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.3,
+        ax1.text(bar.get_x()+bar.get_width()/2, bar.get_height()+0.3,
                  "{:.1f}".format(mean), ha="center", va="bottom", fontsize=7.5, fontweight="bold")
-
 ax1.set_xticks(x)
-ax1.set_xticklabels(["Accuracy", "Precision", "Recall", "F1-Score"], fontsize=12)
+ax1.set_xticklabels(["Accuracy","Precision","Recall","F1-Score"], fontsize=12)
 ax1.set_ylabel("Score (%)", fontsize=12)
-ax1.set_ylim([min([model_results[m][k].mean()*100 for m in model_names for k in metric_names]) - 3, 103])
+min_val = min(model_results[m][k].mean()*100 for m in model_names_list for k in metric_names)
+ax1.set_ylim([max(0, min_val-3), 103])
 ax1.set_title("Fig. 1: All Models — Metric Comparison (5-Fold Cross-Validation)", fontsize=13, fontweight="bold", pad=15)
 ax1.legend(loc="lower right", fontsize=10, framealpha=0.9)
 ax1.set_facecolor("#FAFAFA")
@@ -191,35 +190,34 @@ fig1.patch.set_facecolor("white")
 plt.tight_layout()
 plt.savefig("outputs/plots/fig1_metric_comparison.png", dpi=150, bbox_inches="tight")
 plt.close()
-print("Fig 1 saved: grouped metric comparison")
+print("Fig 1 saved")
 
-# ── FIGURE 2: Accuracy Comparison Bar ─────────────────────────
+# FIGURE 2: Accuracy bar with error bars
 fig2, ax2 = plt.subplots(figsize=(10, 6))
-acc_means = [model_results[m]["accuracy"].mean() * 100 for m in model_names]
-acc_stds  = [model_results[m]["accuracy"].std()  * 100 for m in model_names]
-bars2 = ax2.bar(model_names, acc_means, yerr=acc_stds,
-                color=COLORS[:len(model_names)], capsize=6,
-                alpha=0.88, edgecolor="white",
-                error_kw={"elinewidth": 2, "ecolor": "#333"})
+acc_means = [model_results[m]["accuracy"].mean()*100 for m in model_names_list]
+acc_stds  = [model_results[m]["accuracy"].std()*100  for m in model_names_list]
+bars2 = ax2.bar(model_names_list, acc_means, yerr=acc_stds,
+                color=COLORS[:len(model_names_list)], capsize=6, alpha=0.88,
+                edgecolor="white", error_kw={"elinewidth":2,"ecolor":"#333"})
 for bar, mean, std in zip(bars2, acc_means, acc_stds):
-    ax2.text(bar.get_x() + bar.get_width()/2, bar.get_height() + std + 0.3,
+    ax2.text(bar.get_x()+bar.get_width()/2, bar.get_height()+std+0.3,
              "{:.2f}%".format(mean), ha="center", va="bottom", fontsize=11, fontweight="bold")
 ax2.set_ylabel("Accuracy (%)", fontsize=12)
-ax2.set_title("Fig. 2: Accuracy Comparison — 5-Fold Cross-Validation with Error Bars", fontsize=13, fontweight="bold", pad=15)
-ax2.set_ylim([min(acc_means) - 3, 103])
+ax2.set_title("Fig. 2: Accuracy Comparison with 95% Confidence Error Bars", fontsize=13, fontweight="bold", pad=15)
+ax2.set_ylim([max(0,min(acc_means)-3), 103])
 ax2.set_facecolor("#FAFAFA")
 fig2.patch.set_facecolor("white")
 plt.tight_layout()
 plt.savefig("outputs/plots/fig2_accuracy_comparison.png", dpi=150, bbox_inches="tight")
 plt.close()
-print("Fig 2 saved: accuracy comparison")
+print("Fig 2 saved")
 
-# ── FIGURE 3: CV Score Distribution Box Plot ──────────────────
+# FIGURE 3: Box plot CV distribution
 fig3, ax3 = plt.subplots(figsize=(11, 6))
-acc_scores = [model_results[m]["accuracy"] * 100 for m in model_names]
-bp = ax3.boxplot(acc_scores, labels=model_names, patch_artist=True,
-                 medianprops={"color": "white", "linewidth": 2.5})
-for patch, color in zip(bp["boxes"], COLORS[:len(model_names)]):
+acc_scores = [model_results[m]["accuracy"]*100 for m in model_names_list]
+bp = ax3.boxplot(acc_scores, labels=model_names_list, patch_artist=True,
+                 medianprops={"color":"white","linewidth":2.5})
+for patch, color in zip(bp["boxes"], COLORS[:len(model_names_list)]):
     patch.set_facecolor(color)
     patch.set_alpha(0.82)
 ax3.set_ylabel("Accuracy (%)", fontsize=12)
@@ -229,214 +227,182 @@ fig3.patch.set_facecolor("white")
 plt.tight_layout()
 plt.savefig("outputs/plots/fig3_cv_distribution.png", dpi=150, bbox_inches="tight")
 plt.close()
-print("Fig 3 saved: CV distribution")
+print("Fig 3 saved")
 
-# ── FIGURE 4: Radar / Spider Chart ────────────────────────────
-categories = ["Accuracy", "Precision", "Recall", "F1-Score"]
+# FIGURE 4: Radar chart
+categories = ["Accuracy","Precision","Recall","F1-Score"]
 N = len(categories)
-angles = np.linspace(0, 2*np.pi, N, endpoint=False).tolist()
-angles += angles[:1]
-
-fig4, ax4 = plt.subplots(figsize=(8, 8), subplot_kw=dict(polar=True))
-for i, (mname, color) in enumerate(zip(model_names, COLORS)):
-    values = [model_results[mname][m].mean() * 100 for m in metric_names]
-    values += values[:1]
+angles = np.linspace(0, 2*np.pi, N, endpoint=False).tolist() + [0]
+fig4, ax4 = plt.subplots(figsize=(8,8), subplot_kw=dict(polar=True))
+for i, (mname, color) in enumerate(zip(model_names_list, COLORS)):
+    values = [model_results[mname][m].mean()*100 for m in metric_names] + [model_results[mname]["accuracy"].mean()*100]
     ax4.plot(angles, values, "o-", linewidth=2, label=mname, color=color)
-    ax4.fill(angles, values, alpha=0.12, color=color)
-
+    ax4.fill(angles, values, alpha=0.1, color=color)
 ax4.set_xticks(angles[:-1])
 ax4.set_xticklabels(categories, fontsize=12)
-min_val = min([model_results[m][k].mean()*100 for m in model_names for k in metric_names])
-ax4.set_ylim([max(0, min_val - 5), 100])
+min_r = max(0, min(model_results[m][k].mean()*100 for m in model_names_list for k in metric_names)-5)
+ax4.set_ylim([min_r, 100])
 ax4.set_title("Fig. 4: Radar Chart — Multi-Metric Model Comparison", fontsize=13, fontweight="bold", pad=20)
-ax4.legend(loc="upper right", bbox_to_anchor=(1.3, 1.1), fontsize=10)
+ax4.legend(loc="upper right", bbox_to_anchor=(1.35,1.1), fontsize=10)
 fig4.patch.set_facecolor("white")
 plt.tight_layout()
 plt.savefig("outputs/plots/fig4_radar_chart.png", dpi=150, bbox_inches="tight")
 plt.close()
-print("Fig 4 saved: radar chart")
+print("Fig 4 saved")
 
-# ── FIGURE 5: Ablation Study ──────────────────────────────────
+# FIGURE 5: Feature importance
 rf.fit(X, y)
 importances = rf.feature_importances_
 indices = np.argsort(importances)[::-1]
-feature_names = features if isinstance(features[0], str) else ["f"+str(i) for i in range(X.shape[1])]
-top5_idx = indices[:5]
-top5 = [feature_names[i] for i in top5_idx]
-X_top5 = X[:, top5_idx]
+feature_names_list = features if isinstance(features[0], str) else ["f"+str(i) for i in range(X.shape[1])]
+top5 = [feature_names_list[i] for i in indices[:5]]
+X_top5 = X[:, indices[:5]]
+rf_top5_acc = cross_val_score(RandomForestClassifier(**{**best_rf,"random_state":42}), X_top5, y, cv=cv, scoring="accuracy")
+print("Ablation Top-5: {:.4f}".format(rf_top5_acc.mean()))
 
-rf_full_acc  = model_results["RandomForest"]["accuracy"]
-rf_top5_acc  = cross_val_score(RandomForestClassifier(**{**best_rf, "random_state": 42}), X_top5, y, cv=cv, scoring="accuracy")
+fig5, axes5 = plt.subplots(1, 2, figsize=(14, 5))
+bar_colors = [COLORS[0] if i < 5 else "#90CAF9" for i in range(len(feature_names_list))]
+bars5 = axes5[0].bar(range(len(feature_names_list)), importances[indices], color=bar_colors, edgecolor="white")
+axes5[0].set_xticks(range(len(feature_names_list)))
+axes5[0].set_xticklabels([feature_names_list[i] for i in indices], rotation=45, ha="right", fontsize=9)
+axes5[0].set_title("Fig. 5a: XAI Feature Importance (Random Forest)", fontsize=11, fontweight="bold", pad=10)
+axes5[0].set_ylabel("Importance Score")
+for bar, val in zip(bars5, importances[indices]):
+    axes5[0].text(bar.get_x()+bar.get_width()/2, bar.get_height()+0.001, "{:.3f}".format(val), ha="center", va="bottom", fontsize=7)
 
-ablation_labels = ["All Features\n(" + str(len(feature_names)) + ")", "Top-5 XAI\nFeatures"]
-ablation_vals   = [rf_full_acc.mean()*100, rf_top5_acc.mean()*100]
-ablation_stds   = [rf_full_acc.std()*100,  rf_top5_acc.std()*100]
-
-fig5, ax5 = plt.subplots(figsize=(8, 5))
-bars5 = ax5.bar(ablation_labels, ablation_vals, yerr=ablation_stds,
-                color=[COLORS[0], COLORS[2]], capsize=6, alpha=0.88, edgecolor="white",
-                error_kw={"elinewidth": 2, "ecolor": "#333"})
-for bar, val, std in zip(bars5, ablation_vals, ablation_stds):
-    ax5.text(bar.get_x()+bar.get_width()/2, bar.get_height()+std+0.3,
-             "{:.2f}%".format(val), ha="center", va="bottom", fontsize=11, fontweight="bold")
-ax5.annotate("Delta = {:.2f}%".format(ablation_vals[0]-ablation_vals[1]),
-             xy=(0.5, max(ablation_vals)-1), xycoords="data",
-             ha="center", fontsize=11, color="#333", style="italic")
-ax5.set_ylabel("Accuracy (%)", fontsize=12)
-ax5.set_title("Fig. 5: Ablation Study — XAI Feature Selection Impact", fontsize=13, fontweight="bold", pad=15)
-ax5.set_ylim([min(ablation_vals)-3, 103])
-ax5.set_facecolor("#FAFAFA")
+abl_labels = ["All Features (" + str(len(feature_names_list)) + ")", "Top-5 XAI Features"]
+abl_vals  = [model_results["RandomForest"]["accuracy"].mean()*100, rf_top5_acc.mean()*100]
+abl_stds  = [model_results["RandomForest"]["accuracy"].std()*100,  rf_top5_acc.std()*100]
+bars5b = axes5[1].bar(abl_labels, abl_vals, yerr=abl_stds,
+                       color=[COLORS[0],COLORS[2]], capsize=6, alpha=0.88,
+                       edgecolor="white", error_kw={"elinewidth":2,"ecolor":"#333"})
+for bar, val, std in zip(bars5b, abl_vals, abl_stds):
+    axes5[1].text(bar.get_x()+bar.get_width()/2, bar.get_height()+std+0.3,
+                  "{:.2f}%".format(val), ha="center", va="bottom", fontsize=11, fontweight="bold")
+axes5[1].set_ylabel("Accuracy (%)")
+axes5[1].set_title("Fig. 5b: Ablation Study — Feature Selection Impact", fontsize=11, fontweight="bold", pad=10)
+axes5[1].set_ylim([min(abl_vals)-3, 103])
+axes5[1].annotate("Delta={:.2f}%".format(abl_vals[0]-abl_vals[1]),
+                   xy=(0.5, max(abl_vals)-1), xycoords="data", ha="center", fontsize=10, style="italic")
+axes5[0].set_facecolor("#FAFAFA")
+axes5[1].set_facecolor("#FAFAFA")
 fig5.patch.set_facecolor("white")
 plt.tight_layout()
-plt.savefig("outputs/plots/fig5_ablation.png", dpi=150, bbox_inches="tight")
+plt.savefig("outputs/plots/fig5_feature_ablation.png", dpi=150, bbox_inches="tight")
 plt.close()
-print("Fig 5 saved: ablation")
+print("Fig 5 saved")
 
-# ── FIGURE 6: Feature Importance ──────────────────────────────
-fig6, ax6 = plt.subplots(figsize=(12, 5))
-bar_colors = [COLORS[0] if i < 5 else "#90CAF9" for i in range(len(feature_names))]
-bars6 = ax6.bar(range(len(feature_names)), importances[indices], color=bar_colors, edgecolor="white")
-ax6.set_xticks(range(len(feature_names)))
-ax6.set_xticklabels([feature_names[i] for i in indices], rotation=45, ha="right", fontsize=10)
-ax6.set_title("Fig. 6: XAI Feature Importance Analysis (Random Forest)", fontsize=13, fontweight="bold", pad=15)
-ax6.set_xlabel("Features", fontsize=11)
-ax6.set_ylabel("Importance Score", fontsize=11)
-for bar, val in zip(bars6, importances[indices]):
-    ax6.text(bar.get_x()+bar.get_width()/2, bar.get_height()+0.001,
-             "{:.3f}".format(val), ha="center", va="bottom", fontsize=8)
-ax6.set_facecolor("#FAFAFA")
-fig6.patch.set_facecolor("white")
-plt.tight_layout()
-plt.savefig("outputs/plots/fig6_feature_importance.png", dpi=150, bbox_inches="tight")
-plt.close()
-print("Fig 6 saved: feature importance")
-
-# ── FIGURE 7: Confusion Matrix ────────────────────────────────
+# FIGURE 6: Confusion matrix
 rf_preds = cross_val_predict(rf, X, y, cv=cv)
 cm = confusion_matrix(y, rf_preds)
-fig7, ax7 = plt.subplots(figsize=(7, 6))
+fig6, ax6 = plt.subplots(figsize=(7,6))
 disp = ConfusionMatrixDisplay(confusion_matrix=cm)
-disp.plot(ax=ax7, colorbar=True, cmap="Blues")
-ax7.set_title("Fig. 7: Confusion Matrix — Random Forest (5-Fold CV)", fontsize=13, fontweight="bold", pad=15)
-fig7.patch.set_facecolor("white")
+disp.plot(ax=ax6, colorbar=True, cmap="Blues")
+ax6.set_title("Fig. 6: Confusion Matrix — Best Model (5-Fold CV)", fontsize=13, fontweight="bold", pad=15)
+fig6.patch.set_facecolor("white")
 plt.tight_layout()
-plt.savefig("outputs/plots/fig7_confusion_matrix.png", dpi=150, bbox_inches="tight")
+plt.savefig("outputs/plots/fig6_confusion_matrix.png", dpi=150, bbox_inches="tight")
 plt.close()
-print("Fig 7 saved: confusion matrix")
+print("Fig 6 saved")
 
-# ── FIGURE 8: SHAP Analysis ───────────────────────────────────
 plot_files = [
     "outputs/plots/fig1_metric_comparison.png",
     "outputs/plots/fig2_accuracy_comparison.png",
     "outputs/plots/fig3_cv_distribution.png",
     "outputs/plots/fig4_radar_chart.png",
-    "outputs/plots/fig5_ablation.png",
-    "outputs/plots/fig6_feature_importance.png",
-    "outputs/plots/fig7_confusion_matrix.png"
+    "outputs/plots/fig5_feature_ablation.png",
+    "outputs/plots/fig6_confusion_matrix.png"
 ]
 
+# FIGURE 7: SHAP
 if HAS_SHAP:
     try:
-        print("Running SHAP analysis...")
+        print("Running SHAP...")
         rf_s = RandomForestClassifier(n_estimators=50, random_state=42)
-        Xs = X[:min(500, len(X))]
-        ys = y[:min(500, len(y))]
+        Xs = X[:min(500,len(X))]
+        ys = y[:min(500,len(y))]
         rf_s.fit(Xs, ys)
         explainer = shap.TreeExplainer(rf_s)
-        shap_vals = explainer.shap_values(Xs[:100])
-        if isinstance(shap_vals, list):
-            shap_vals = shap_vals[1]
-
-        fig8, axes8 = plt.subplots(1, 2, figsize=(16, 6))
-        sm = np.abs(shap_vals).mean(axis=0)
+        sv = explainer.shap_values(Xs[:100])
+        if isinstance(sv, list): sv = sv[1]
+        fig7, axes7 = plt.subplots(1, 2, figsize=(16,6))
+        sm = np.abs(sv).mean(axis=0)
         si = np.argsort(sm)[::-1]
-        axes8[0].barh([feature_names[i] for i in si[:10]][::-1], sm[si[:10]][::-1], color="#E65100", alpha=0.85)
-        axes8[0].set_title("Fig. 8a: SHAP Feature Importance\n(Mean |SHAP value|)", fontsize=12, fontweight="bold")
-        axes8[0].set_xlabel("Mean |SHAP Value|")
-
-        sp = np.mean(shap_vals > 0, axis=0)
+        axes7[0].barh([feature_names_list[i] for i in si[:10]][::-1], sm[si[:10]][::-1], color="#E65100", alpha=0.85)
+        axes7[0].set_title("Fig. 7a: SHAP Feature Importance", fontsize=12, fontweight="bold")
+        axes7[0].set_xlabel("Mean |SHAP Value|")
+        sp = np.mean(sv > 0, axis=0)
         ti = si[:8]
-        axes8[1].barh([feature_names[i] for i in ti][::-1], sp[ti][::-1], color="#2196F3", alpha=0.85, label="Positive")
-        axes8[1].barh([feature_names[i] for i in ti][::-1], -(1-sp[ti])[::-1], color="#F44336", alpha=0.85, label="Negative")
-        axes8[1].set_title("Fig. 8b: SHAP Direction Analysis", fontsize=12, fontweight="bold")
-        axes8[1].set_xlabel("Proportion of samples")
-        axes8[1].legend(fontsize=9)
-        axes8[1].axvline(x=0, color="black", linewidth=0.8)
+        axes7[1].barh([feature_names_list[i] for i in ti][::-1], sp[ti][::-1], color="#2196F3", alpha=0.85, label="Positive")
+        axes7[1].barh([feature_names_list[i] for i in ti][::-1], -(1-sp[ti])[::-1], color="#F44336", alpha=0.85, label="Negative")
+        axes7[1].set_title("Fig. 7b: SHAP Direction Analysis", fontsize=12, fontweight="bold")
+        axes7[1].set_xlabel("Proportion of samples")
+        axes7[1].legend(fontsize=9)
+        axes7[1].axvline(x=0, color="black", linewidth=0.8)
         plt.tight_layout()
-        plt.savefig("outputs/plots/fig8_shap.png", dpi=150, bbox_inches="tight")
+        plt.savefig("outputs/plots/fig7_shap.png", dpi=150, bbox_inches="tight")
         plt.close()
-        plot_files.append("outputs/plots/fig8_shap.png")
-        print("Fig 8 saved: SHAP")
+        plot_files.append("outputs/plots/fig7_shap.png")
+        print("Fig 7 saved: SHAP")
     except Exception as e:
         print("SHAP failed: " + str(e))
 
-# ── Statistical Tests ──────────────────────────────────────────
+# Statistical tests
 rf_acc = model_results["RandomForest"]["accuracy"]
 gb_acc = model_results["GradientBoosting"]["accuracy"]
 t_stat, p_value = stats.ttest_rel(rf_acc, gb_acc)
 significance = "statistically significant (p<0.05)" if p_value < 0.05 else "not statistically significant"
 ci_rf = stats.t.interval(0.95, len(rf_acc)-1, loc=rf_acc.mean(), scale=stats.sem(rf_acc))
-print("t-test RF vs GB: t={:.4f}, p={:.4f} - {}".format(t_stat, p_value, significance))
+print("t-test: t={:.4f}, p={:.4f} - {}".format(t_stat, p_value, significance))
 
-all_accs = [model_results[m]["accuracy"].mean() for m in model_names]
+all_accs = [model_results[m]["accuracy"].mean() for m in model_names_list]
 best_idx = int(np.argmax(all_accs))
-best_model = model_names[best_idx]
+best_model_name = model_names_list[best_idx]
 best_acc = all_accs[best_idx]
-print("Best model: " + best_model + " ({:.4f})".format(best_acc))
+print("Best: " + best_model_name + " ({:.4f})".format(best_acc))
 
-# ── Build metrics list ─────────────────────────────────────────
 metrics = []
-for mname in model_names:
+for mname in model_names_list:
     for metric in metric_names:
-        scores = model_results[mname][metric]
+        sc = model_results[mname][metric]
         metrics.append({
             "metric_name": mname.replace(" ","") + "_" + metric,
-            "mean": round(float(scores.mean()), 4),
-            "std":  round(float(scores.std()),  4),
+            "mean": round(float(sc.mean()),4),
+            "std":  round(float(sc.std()),4),
             "n_runs": 5
         })
 
 metrics += [
-    {"metric_name": "p_value_rf_vs_gb", "mean": round(float(p_value),4),   "std": 0.0, "n_runs": 1},
-    {"metric_name": "rf_95ci_lower",    "mean": round(float(ci_rf[0]),4),  "std": 0.0, "n_runs": 1},
-    {"metric_name": "rf_95ci_upper",    "mean": round(float(ci_rf[1]),4),  "std": 0.0, "n_runs": 1},
-    {"metric_name": "XAI_top5_accuracy","mean": round(float(rf_top5_acc.mean()),4), "std": round(float(rf_top5_acc.std()),4), "n_runs": 5}
+    {"metric_name":"p_value_rf_vs_gb", "mean":round(float(p_value),4),  "std":0.0,"n_runs":1},
+    {"metric_name":"rf_95ci_lower",    "mean":round(float(ci_rf[0]),4), "std":0.0,"n_runs":1},
+    {"metric_name":"rf_95ci_upper",    "mean":round(float(ci_rf[1]),4), "std":0.0,"n_runs":1},
+    {"metric_name":"XAI_top5_accuracy","mean":round(float(rf_top5_acc.mean()),4),"std":round(float(rf_top5_acc.std()),4),"n_runs":5}
 ]
 
 results = {
     "metrics": metrics,
     "hypothesis_verdict": "supported" if best_acc > 0.75 else "partially_supported",
-    "best_model": best_model,
+    "best_model": best_model_name,
     "plot_files": plot_files,
     "key_findings": [
-        "Best model: " + best_model + " ({:.2f}% accuracy)".format(best_acc*100),
-        "RandomForest: {:.2f}% (95% CI: {:.2f}%-{:.2f}%)".format(
-            rf_acc.mean()*100, ci_rf[0]*100, ci_rf[1]*100),
+        "Best: " + best_model_name + " ({:.2f}%)".format(best_acc*100),
+        "RandomForest: {:.2f}% (95% CI: {:.2f}%-{:.2f}%)".format(rf_acc.mean()*100, ci_rf[0]*100, ci_rf[1]*100),
         "GradientBoosting: {:.2f}%".format(gb_acc.mean()*100),
-        "Statistical test: t={:.4f}, p={:.4f} ({})".format(t_stat, p_value, significance),
-        "Top-5 XAI features: {:.2f}% (validates feature importance)".format(rf_top5_acc.mean()*100),
-        "Most important features: " + ", ".join(top5[:3]),
-        "Dataset: " + dataset_name + " | Samples: " + str(X.shape[0]),
-        str(len(plot_files)) + " figures generated"
+        "t={:.4f}, p={:.4f} ({})".format(t_stat, p_value, significance),
+        "Top-5 XAI: {:.2f}%".format(rf_top5_acc.mean()*100),
+        "Top features: " + ", ".join(top5[:3]),
+        "Dataset: " + dataset_name + " | n=" + str(X.shape[0])
     ],
     "statistical_tests": {
-        "paired_ttest_rf_vs_gb": {
-            "t_statistic": round(float(t_stat), 4),
-            "p_value":     round(float(p_value), 4),
-            "significant": bool(p_value < 0.05)
-        },
-        "rf_95_confidence_interval": {
-            "lower": round(float(ci_rf[0]), 4),
-            "upper": round(float(ci_rf[1]), 4)
-        }
+        "paired_ttest": {"t": round(float(t_stat),4), "p": round(float(p_value),4), "sig": bool(p_value<0.05)},
+        "rf_95ci": {"lower": round(float(ci_rf[0]),4), "upper": round(float(ci_rf[1]),4)}
     }
 }
 
-with open("outputs/code/results.json", "w") as f:
+with open("outputs/code/results.json","w") as f:
     json.dump(results, f, indent=2)
-
-print("Results saved.")
-print("EXPERIMENT COMPLETE — " + str(len(plot_files)) + " figures generated")
+print("Results saved. " + str(len(plot_files)) + " figures generated.")
+print("EXPERIMENT COMPLETE")
 '''
 
 
@@ -458,39 +424,39 @@ def run():
     result = code_executor.run_script(script_path, timeout=300)
 
     if not result["success"]:
-        print("[ImplementationAgent] Experiment failed: " + result["stderr"][:300])
+        print("[ImplementationAgent] Experiment failed: " + result["stderr"][:200])
         print("[ImplementationAgent] Trying LLM fallback...")
 
-        prompt  = "Write a complete Python ML experiment.\n"
-        prompt += "CRITICAL: Use ONLY these exact plot names:\n"
-        prompt += "- outputs/plots/fig1_metric_comparison.png\n"
-        prompt += "- outputs/plots/fig2_accuracy_comparison.png\n"
-        prompt += "- outputs/plots/fig3_cv_distribution.png\n"
-        prompt += "- outputs/plots/fig4_radar_chart.png\n"
-        prompt += "- outputs/plots/fig5_ablation.png\n"
-        prompt += "- outputs/plots/fig6_feature_importance.png\n"
-        prompt += "- outputs/plots/fig7_confusion_matrix.png\n"
-        prompt += "Use sklearn breast_cancer dataset as fallback.\n"
-        prompt += "Train RandomForest and GradientBoosting.\n"
-        prompt += "Fig 1 MUST be a grouped bar chart with ALL models side by side for accuracy/precision/recall/f1.\n"
-        prompt += "Fig 2 MUST compare accuracy across models with error bars.\n"
-        prompt += "Save results.json with metrics list.\n"
-        prompt += "Error was: " + result["stderr"][:300]
+        prompt  = "Write a complete Python ML classification experiment.\n"
+        prompt += "Use sklearn.datasets.load_breast_cancer() — no downloads.\n"
+        prompt += "Train RandomForest and GradientBoosting with 5-fold CV.\n"
+        prompt += "Compute accuracy, precision, recall, f1_weighted for each model.\n"
+        prompt += "Generate these exact files:\n"
+        prompt += "- outputs/plots/fig1_metric_comparison.png (grouped bar: all models x all metrics)\n"
+        prompt += "- outputs/plots/fig2_accuracy_comparison.png (accuracy bar chart)\n"
+        prompt += "- outputs/plots/fig3_cv_distribution.png (boxplot)\n"
+        prompt += "- outputs/plots/fig4_radar_chart.png (radar/spider chart)\n"
+        prompt += "- outputs/plots/fig5_feature_ablation.png (feature importance + ablation side by side)\n"
+        prompt += "- outputs/plots/fig6_confusion_matrix.png\n"
+        prompt += "Save outputs/code/results.json with keys: metrics, hypothesis_verdict, best_model, key_findings, plot_files\n"
+        prompt += "CRITICAL: No newline characters inside string literals in bar chart labels.\n"
+        prompt += "Use space instead of backslash-n in axis labels.\n"
+        prompt += "Must complete in 120 seconds. Return ONLY Python code.\n"
 
         raw = call_with_retry(
             client,
             messages=[
-                {"role": "system", "content": "Python ML engineer. Return ONLY runnable Python code. No markdown."},
+                {"role": "system", "content": "Python ML engineer. Return ONLY runnable Python code. No markdown fences."},
                 {"role": "user", "content": prompt}
             ],
             max_tokens=config.MAX_TOKENS,
-            temperature=0.2,
+            temperature=0.1,
             agent_name="implementation_agent"
         )
         used = log_usage("implementation_agent", prompt, raw)
         print_status("implementation_agent", used)
 
-        code = raw
+        code = raw.strip()
         if "```" in code:
             code = code.split("```")[1]
             if code.startswith("python"):
