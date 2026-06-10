@@ -4,9 +4,9 @@ from orchestrator import run
 # ============================================================
 # CHANGE ONLY THIS SECTION TO RUN A DIFFERENT PAPER
 # ============================================================
-TOPIC     = "hallucination detection in large language models using uncertainty quantification and conformal prediction"
-DOMAIN    = "natural language processing and AI safety"
-VENUE     = "ACL 2026"
+TOPIC     = "anomaly detection in industrial IoT sensor streams using ensemble methods and explainable AI"
+DOMAIN    = "Industrial Internet of Things"
+VENUE     = "IEEE Transactions on Industrial Informatics"
 YEAR_FROM = 2021
 YEAR_TO   = 2025
 MAX_PAPERS = 20

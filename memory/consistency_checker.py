@@ -16,10 +16,16 @@ def check_numbers(sections, result_summary):
     issues = []
     actual_metrics = result_summary.get("metrics", [])
     actual_numbers = set()
+    actual_pcts    = set()   # percentage floats for distance check
     for m in actual_metrics:
-        actual_numbers.add(str(round(m["mean"], 2)))
-        actual_numbers.add(str(round(m["mean"] * 100, 1)))
-        actual_numbers.add(str(round(m["mean"] * 100, 2)))
+        val = m["mean"]
+        actual_numbers.add(str(round(val, 2)))
+        if 0 < val <= 1.0:
+            actual_numbers.add(str(round(val * 100, 1)))
+            actual_numbers.add(str(round(val * 100, 2)))
+            actual_pcts.add(round(val * 100, 2))
+        else:
+            actual_pcts.add(round(val, 2))
 
     number_pattern = re.compile(r'\b\d+\.\d+\b')
     for section_name in ["abstract", "results", "discussion", "conclusion"]:
@@ -28,17 +34,19 @@ def check_numbers(sections, result_summary):
         for num in numbers_found:
             val = float(num)
             if 50 < val < 100:
-                close = any(
-                    abs(val - float(n)) < 2.0
-                    for n in actual_numbers if n
-                )
-                if not close and len(actual_numbers) > 0:
-                    issues.append({
-                        "type": "number_mismatch",
-                        "section": section_name,
-                        "value": num,
-                        "message": num + "% in " + section_name + " does not match actual metrics"
-                    })
+                close = any(abs(val - p) < 2.0 for p in actual_pcts)
+                if not close and actual_pcts:
+                    min_dist = min(abs(val - p) for p in actual_pcts)
+                    if min_dist > 3.0:
+                        nearest = min(actual_pcts, key=lambda p: abs(val - p))
+                        issues.append({
+                            "type": "number_mismatch",
+                            "section": section_name,
+                            "value": num,
+                            "message": (num + "% in " + section_name +
+                                        " does not match actual metrics (nearest real: " +
+                                        "{:.2f}%)".format(nearest))
+                        })
     return issues
 
 

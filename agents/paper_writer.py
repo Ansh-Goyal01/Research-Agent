@@ -24,6 +24,78 @@ from memory.groq_client import create_client, call_with_retry
 import config
 
 
+def _enforce_metrics(text: str, metrics: list) -> str:
+    """
+    Bulletproof post-write pass: replace ALL percentage numbers in the text
+    that don't match real metric values.
+    Strategy:
+    - Build set of real values
+    - Any X.Y% where X.Y is not within 0.5 of a real value → replace with nearest real
+    - Targets sections that commonly have hallucinated numbers
+    """
+    import re
+
+    real_pcts = set()
+    for m in metrics:
+        val = m["mean"]
+        std = m["std"]
+        if 0 < val <= 1.0 and not any(x in m["metric_name"].lower()
+                                       for x in ["ci", "p_value", "lower", "upper"]):
+            real_pcts.add(round(val * 100, 2))
+
+    if not real_pcts:
+        return text
+
+    sorted_real = sorted(real_pcts, reverse=True)
+    best_val    = sorted_real[0]
+
+    def replace_pct(m):
+        num_str = m.group(1)
+        try:
+            num = float(num_str)
+        except ValueError:
+            return m.group(0)
+        if num < 50 or num > 100:
+            return m.group(0)
+        # Check if it matches any real value within 0.5%
+        if any(abs(num - r) <= 0.5 for r in real_pcts):
+            return m.group(0)          # it's real, keep it
+        # Replace with nearest real value
+        closest = min(real_pcts, key=lambda r: abs(r - num))
+        return "{:.2f}%".format(closest)
+
+    text = re.sub(r'(\d{2,3}(?:\.\d{1,2})?)%', replace_pct, text)
+    return text
+
+
+def _build_metrics_table_str(metrics: list) -> str:
+    """Build a locked table of model→metric→value the LLM must copy verbatim."""
+    rows = {}
+    for m in metrics:
+        name = m["metric_name"]
+        val  = m["mean"]
+        std  = m["std"]
+        if any(x in name.lower() for x in ["ci", "p_value", "lower", "upper", "xai"]):
+            continue
+        parts  = name.split("_")
+        model  = parts[0]
+        metric = "_".join(parts[1:]) if len(parts) > 1 else name
+        if model not in rows:
+            rows[model] = {}
+        if 0 < val <= 1.0:
+            rows[model][metric] = "{:.2f}% ±{:.2f}%".format(val*100, std*100)
+        else:
+            rows[model][metric] = "{:.4f}".format(val)
+
+    lines = ["LOCKED METRICS TABLE — copy these numbers EXACTLY, do not change them:"]
+    for model, data in rows.items():
+        for metric, val in data.items():
+            lines.append("  " + model + " " + metric + " = " + val)
+    return "\n".join(lines)
+
+
+
+
 def _call(client, instruction, context, max_tokens=3000, agent_name="paper_writer"):
     time.sleep(6)
     raw = call_with_retry(
@@ -45,9 +117,59 @@ def _call(client, instruction, context, max_tokens=3000, agent_name="paper_write
 def _strip_markdown_headers(text: str) -> str:
     """Remove any ####/###/## prefix from lines — they render as raw text in HTML."""
     import re
-    # Replace #### Heading → "Heading" (plain, as paper subsection)
     text = re.sub(r'^#{1,4}\s+', '', text, flags=re.MULTILINE)
     return text
+
+
+def _remove_abstract_block(text: str) -> str:
+    """
+    Bulletproof removal of any freestanding ABSTRACT block the LLM inserts.
+    Scans line by line: if we see an ABSTRACT heading, we skip lines until
+    we hit the next real section heading (Introduction, Related, etc.) or 2+ blank lines.
+    """
+    import re
+    lines   = text.split("\n")
+    out     = []
+    skipping = False
+    blank_count = 0
+
+    abstract_heading = re.compile(
+        r"^\s*(?:#{1,4}\s*)?(?:\*{1,2})?(?:Abstract|ABSTRACT)(?:\*{1,2})?[—\-—:\s]*$",
+        re.IGNORECASE
+    )
+    # Also catch inline "Abstract— text..." at start of a line (abstract repeated as paragraph)
+    abstract_inline = re.compile(
+        r"^\s*(?:\*{1,2})?(?:Abstract|ABSTRACT)[—\-:\s]+\S",
+        re.IGNORECASE
+    )
+    section_heading = re.compile(
+        r"^\s*(?:#{1,4}\s*|[IVX]+\.\s*|[A-Z]\.\s*)?"
+        r"(Introduction|Related Work|Methodology|Experiments|Results|"
+        r"Discussion|Conclusion|Limitations|References)",
+        re.IGNORECASE
+    )
+
+    for line in lines:
+        if not skipping:
+            if abstract_heading.match(line) or abstract_inline.match(line):
+                skipping    = True
+                blank_count = 0
+                continue
+        else:
+            # Stop skipping when we hit a real section or two consecutive blank lines
+            if section_heading.match(line):
+                skipping = False
+                out.append(line)
+            elif line.strip() == "":
+                blank_count += 1
+                if blank_count >= 2:
+                    skipping = False
+            else:
+                blank_count = 0
+            continue
+        out.append(line)
+
+    return "\n".join(out).lstrip()
 
 
 def run():
@@ -216,6 +338,12 @@ def run():
     sections["introduction"] = _strip_markdown_headers(parts1[1].strip()) if len(parts1) > 1 else ""
     sections["related_work"] = _strip_markdown_headers(parts1[2].strip()) if len(parts1) > 2 else ""
 
+    # Post-process: remove any freestanding ABSTRACT heading the LLM snuck in
+    for sec in ["introduction", "related_work", "methodology", "experiments",
+                "results", "discussion", "conclusion", "limitations"]:
+        if sec in sections and sections[sec]:
+            sections[sec] = _remove_abstract_block(sections[sec])
+
     print("[PaperWriter] Rewriting abstract to strict IMRaD...")
     sections["abstract"] = rewrite_abstract(client, sections["abstract"],
                                               metrics_str, title, topic)
@@ -248,8 +376,11 @@ def run():
         "F) Ablation: compare full features vs reduced feature set.\n\n"
 
         "SECTION 3 - RESULTS (minimum 400 words):\n"
-        "CRITICAL: Use ONLY these exact numbers — do not invent any others:\n"
+        "CRITICAL — NUMBERS ARE LOCKED. Copy these EXACT values character-for-character.\n"
+        "Do NOT round, do NOT add 1%, do NOT invent new numbers. Any number\n"
+        "you write that does not appear in this list is a hallucination:\n"
         + metrics_str + "\n\n"
+        + _build_metrics_table_str(metrics) + "\n\n"
         "Structure:\n"
         "1) Present the comparison table using this template:\n"
         + RESULTS_TABLE_TEMPLATE + "\n"
@@ -311,6 +442,11 @@ def run():
         refs.append("[" + str(i+1) + "] " + authors + ', "' + p["title"] +
                     '," ' + p.get("venue", "arXiv") + ", " + str(p.get("year", "")) + ".")
     sections["references"] = refs
+
+    # Enforce real metric numbers — replace LLM-hallucinated percentages
+    for sname in ["abstract", "results", "discussion", "conclusion"]:
+        if sname in sections and isinstance(sections[sname], str):
+            sections[sname] = _enforce_metrics(sections[sname], metrics)
 
     for sname, content in sections.items():
         if isinstance(content, str) and content:

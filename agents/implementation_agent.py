@@ -531,7 +531,7 @@ if hasattr(best_obj,"feature_importances_"):
     axes5[0].set_yticklabels([feature_names_list[i] if i<len(feature_names_list) else "f"+str(i) for i in top_i],fontsize=8)
     axes5[0].set_xlabel("Importance")
 else:
-    axes5[0].text(0.5,0.5,"Feature importance\nnot available",ha="center",va="center",transform=axes5[0].transAxes)
+    axes5[0].text(0.5,0.5,"Feature importance - not available",ha="center",va="center",transform=axes5[0].transAxes)
 axes5[0].set_title("Fig. 5a. Feature importance (" + best_model_name + ").")
 
 # Ablation: with vs without top-3 features
@@ -820,7 +820,8 @@ TEXT_LOADERS = {
         "ds = hf_load('pminervini/HaluEval', 'qa_samples')\n"
         "split = ds['data'] if 'data' in ds else ds[list(ds.keys())[0]]\n"
         "texts  = [str(r.get('question','')) + ' ' + str(r.get('answer','')) for r in split]\n"
-        "labels = [int(r.get('hallucination',0)) for r in split]\n"
+        "raw_labels = [r.get('hallucination', 0) for r in split]\n"
+        "labels = [1 if str(l).lower() in ['yes','1','true'] else 0 for l in raw_labels]\n"
     ),
     "truthfulqa": (
         "TruthfulQA",
