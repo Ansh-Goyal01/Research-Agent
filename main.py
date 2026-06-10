@@ -4,9 +4,9 @@ from orchestrator import run
 # ============================================================
 # CHANGE ONLY THIS SECTION TO RUN A DIFFERENT PAPER
 # ============================================================
-TOPIC     = "explainable AI for urban traffic congestion prediction and emergency vehicle prioritization"
-DOMAIN    = "intelligent transportation systems and XAI"
-VENUE     = "IEEE Transactions on Intelligent Transportation Systems"
+TOPIC     = "hallucination detection in large language models using uncertainty quantification and conformal prediction"
+DOMAIN    = "natural language processing and AI safety"
+VENUE     = "ACL 2026"
 YEAR_FROM = 2021
 YEAR_TO   = 2025
 MAX_PAPERS = 20

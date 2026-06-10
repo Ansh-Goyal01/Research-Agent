@@ -1,9 +1,33 @@
+# Core
 anthropic>=0.25.0
+groq>=0.9.0
 pydantic>=2.0.0
 requests>=2.31.0
 structlog>=24.0.0
 jsonlines>=4.0.0
-gitpython>=3.1.40
-pylatex>=1.4.2
+
+# ML — CPU-only stack for i5-13200H 16GB DDR5
+scikit-learn>=1.4.0
+xgboost>=2.0.0
+lightgbm>=4.3.0
+optuna>=3.6.0
+shap>=0.45.0
+scipy>=1.13.0
+numpy>=1.26.0
+pandas>=2.2.0
+
+# Text / NLP
+datasets>=2.19.0          # HuggingFace: HaluEval, TruthfulQA, IMDB, AG News
+transformers>=4.40.0      # tokenizers (CPU fine-tune optional)
+ucimlrepo>=0.0.7          # UCI dataset loader
+
+# Visualisation
+matplotlib>=3.8.0
+
+# Anomaly / timeseries (optional — installs if topic needs it)
+# skab>=0.1.0             # pip install skab  (Skoltech Anomaly Benchmark)
+# wfdb>=4.1.0             # pip install wfdb   (PhysioNet ECG)
+
+# State / logging
 tinydb>=4.8.0
-docker>=7.0.0
+gitpython>=3.1.40

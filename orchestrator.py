@@ -165,7 +165,8 @@ def run(topic_data, resume=False):
     # Consistency check
     print("\n[Consistency Check] Running pre-review checks...")
     paper_list_state = state_store.get_state("paper_list")
-    consistency_issues = run_all_checks(draft, result_summary, paper_list_state)
+    experiment_plan_state = state_store.get_state("experiment_plan")
+    consistency_issues = run_all_checks(draft, result_summary, paper_list_state, experiment_plan_state)
     state_store.update_state("consistency_issues", consistency_issues)
 
     # Stage 10
