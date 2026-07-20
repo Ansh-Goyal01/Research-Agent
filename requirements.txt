@@ -1,9 +1,11 @@
-anthropic>=0.25.0
+Set-Content -Path "requirements.txt" -Encoding UTF8 -Value @"
+google-genai>=1.0.0
+python-dotenv>=1.0.0
 pydantic>=2.0.0
 requests>=2.31.0
 structlog>=24.0.0
 jsonlines>=4.0.0
 gitpython>=3.1.40
-pylatex>=1.4.2
+arxiv>=2.1.0
 tinydb>=4.8.0
-docker>=7.0.0
+"@
