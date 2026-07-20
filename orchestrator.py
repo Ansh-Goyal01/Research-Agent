@@ -60,7 +60,7 @@ def run(topic_data):
     print("\n[Stage 4/9] Title Agent...")
     state_store.snapshot_state("before_title")
     title_result = title_agent.run(chosen_idea_id=chosen_id)
-    print("Title: " + title_result[title_result["recommended"]])
+    print("Title: " + title_agent.recommended_title(title_result))
 
     print("\n[Stage 5/9] Experiment Designer...")
     state_store.snapshot_state("before_experiment")

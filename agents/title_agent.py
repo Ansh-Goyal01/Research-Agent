@@ -60,5 +60,16 @@ Return ONLY the JSON object."""
     result = json.loads(raw_output)
     state_store.update_state("title_options", result)
     audit_logger.log("title_agent", {"idea_id": idea["idea_id"]}, result)
-    print(f"[TitleAgent] Recommended title: {result[result['recommended']]}")
+    print(f"[TitleAgent] Recommended title: {recommended_title(result)}")
     return result
+
+
+def recommended_title(result):
+    """Return the recommended title from a title_agent result.
+
+    The prompt asks for "recommended" to hold a key name ("descriptive"), but
+    at temperature 0.7 the model often puts the title itself there instead.
+    Both shapes are accepted; indexing straight through crashes on the second.
+    """
+    recommended = result.get("recommended", "descriptive")
+    return result.get(recommended) or recommended
