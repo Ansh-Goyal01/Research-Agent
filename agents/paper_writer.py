@@ -2,6 +2,7 @@ import json
 from groq import Groq
 from tools import file_manager
 from memory import state_store, audit_logger
+from agents.title_agent import recommended_title
 import config
 
 SYSTEM_PROMPT = """You are an academic paper writer.
@@ -37,7 +38,7 @@ def run():
     if not result_summary:
         raise ValueError("[PaperWriter] No result_summary in state.")
 
-    title = title_options[title_options["recommended"]]
+    title = recommended_title(title_options)
     papers = paper_list["papers"]
     paper_titles = [p["title"] for p in papers]
 
