@@ -8,3 +8,5 @@ logs/
 outputs/
 *.bak
 .DS_Store
+baseline-golden/
+.claude/
