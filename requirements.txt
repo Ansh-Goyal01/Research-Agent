@@ -1,11 +1,28 @@
-Set-Content -Path "requirements.txt" -Encoding UTF8 -Value @"
-google-genai>=1.0.0
-python-dotenv>=1.0.0
-pydantic>=2.0.0
-requests>=2.31.0
-structlog>=24.0.0
-jsonlines>=4.0.0
-gitpython>=3.1.40
-arxiv>=2.1.0
-tinydb>=4.8.0
-"@
+# Runtime dependencies, derived from actual imports in the source tree.
+# Regenerated: the previous file was a literal PowerShell here-string and
+# could not be installed at all.
+
+# --- LLM client (all 9 agents) ---
+groq>=0.37,<1.0
+
+# --- config: reads GROQ_API_KEY from .env ---
+python-dotenv>=1.2,<2.0
+
+# --- tools/paper_search.py: arXiv + Semantic Scholar over plain HTTP ---
+# The `arxiv` package is deliberately NOT used; paper_search calls the REST
+# endpoints in config.py directly with requests.
+requests>=2.33,<3.0
+
+# --- memory/audit_logger.py: append-only audit trail ---
+jsonlines>=4.0,<5.0
+
+# --- Executed by the GENERATED experiment code, not imported by this repo. ---
+# agents/implementation_agent.py restricts generated scripts to exactly these
+# libraries (SYSTEM_PROMPT line 11: "Use only these libraries"). They must be
+# installed for tools/code_executor.py to run stage 8 successfully.
+# Note: no xgboost / lightgbm / torch — the prompt forbids them.
+scikit-learn>=1.9,<2.0
+numpy>=2.4,<3.0
+pandas>=3.0,<4.0
+matplotlib>=3.10,<4.0
+scipy>=1.17,<2.0
