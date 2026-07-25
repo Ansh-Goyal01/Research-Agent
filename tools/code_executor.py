@@ -1,3 +1,4 @@
+import os
 import subprocess
 import time
 from pathlib import Path
@@ -14,6 +15,15 @@ def run_script(script_path, timeout=None):
             "execution_time_seconds": 0.0,
             "output_files": []
         }
+    # Put the project root on the subprocess import path. Python sets sys.path[0]
+    # to the script's own directory (outputs/code/), not the cwd, so without this
+    # a generated `from harness import registry` would fail even though cwd is the
+    # project root. This is what lets the script draw its data from the harness.
+    env = dict(os.environ)
+    existing = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = (
+        str(config.BASE_DIR) + (os.pathsep + existing if existing else "")
+    )
     start = time.time()
     try:
         result = subprocess.run(
@@ -21,7 +31,8 @@ def run_script(script_path, timeout=None):
             capture_output=True,
             text=True,
             timeout=timeout,
-            cwd=str(config.BASE_DIR)
+            cwd=str(config.BASE_DIR),
+            env=env
         )
         elapsed = round(time.time() - start, 2)
         output_files = _find_new_outputs(start)

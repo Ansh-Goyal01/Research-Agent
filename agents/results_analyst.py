@@ -72,6 +72,17 @@ Only include metrics that appear in the actual results. Return ONLY the JSON obj
             raw_output = raw_output[4:]
 
     result = json.loads(raw_output)
+
+    # The verdict is not the analyst's to author. The significance gate already
+    # computed it from the reported numbers by a pre-registered rule; overwrite
+    # whatever the LLM narrated with that trusted value so the paper reports the
+    # verdict the data licenses, not the one the model preferred. The LLM still
+    # supplies the prose (key findings, anomalies) -- just not the conclusion.
+    verification_verdict = state_store.get_state("verification_verdict")
+    if verification_verdict:
+        result["hypothesis_verdict"] = verification_verdict["verdict"]
+        result["verdict_evidence"] = verification_verdict["evidence"]
+
     state_store.update_state("result_summary", result)
     audit_logger.log("results_analyst", {"code_success": code_result["success"]}, result)
     print(f"[ResultsAnalyst] Verdict: {result['hypothesis_verdict']}")

@@ -16,13 +16,20 @@ requests>=2.33,<3.0
 # --- memory/audit_logger.py: append-only audit trail ---
 jsonlines>=4.0,<5.0
 
-# --- Executed by the GENERATED experiment code, not imported by this repo. ---
-# agents/implementation_agent.py restricts generated scripts to exactly these
-# libraries (SYSTEM_PROMPT line 11: "Use only these libraries"). They must be
-# installed for tools/code_executor.py to run stage 8 successfully.
-# Note: no xgboost / lightgbm / torch — the prompt forbids them.
+# --- harness/registry.py: the feasible dataset universe (FIRST-PARTY import) ---
+# scikit-learn is now a direct dependency of this repo, not only of generated
+# code: harness/registry.py imports its loaders to supply experiment data.
+# Generated scripts receive data from the harness rather than loading their own,
+# which is what makes dataset substitution structurally impossible.
 scikit-learn>=1.9,<2.0
 numpy>=2.4,<3.0
 pandas>=3.0,<4.0
 matplotlib>=3.10,<4.0
 scipy>=1.17,<2.0
+
+# --- tests/: adversarial suite for the verification spine ---
+# Run with: python -m pytest
+# pytest.ini disables the unrelated third-party plugins that a shared global
+# site-packages autoloads (one of them aborts collection), so no env var is
+# needed and no plugin this suite relies on is turned off.
+pytest>=8.0,<9.0

@@ -20,6 +20,11 @@ MODEL = "llama-3.3-70b-versatile"
 MAX_TOKENS = 4096
 MAX_RETRIES = 3
 
+# One seed threaded through the whole experiment so a run is reproducible from
+# its manifest alone: the harness uses it to generate synthetic data, and the
+# generated script is told to use it for every train/test split and estimator.
+GLOBAL_SEED = 42
+
 STATE_FILE       = BASE_DIR / "state" / "workflow_state.json"
 AUDIT_LOG        = BASE_DIR / "logs" / "audit.jsonl"
 AGENT_LOGS_DIR   = BASE_DIR / "logs" / "agent_calls"

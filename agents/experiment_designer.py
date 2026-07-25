@@ -1,11 +1,14 @@
 import json
 from groq import Groq
+from harness import registry
 from memory import state_store, audit_logger
 import config
 
 SYSTEM_PROMPT = """You are a methodical experiment designer for machine learning research.
 Rules:
-- Every dataset must be real, public, and verifiable.
+- You may ONLY use datasets from the provided harness registry. No other dataset
+  exists for this pipeline; naming one that is not listed will cause the plan to
+  be rejected before any code is written.
 - Every baseline must be a real published method.
 - Keep compute requirements suitable for a laptop with no GPU.
 - Return ONLY valid JSON. No markdown, no explanation."""
@@ -26,6 +29,11 @@ Novelty: {idea['novelty_explanation']}
 Experiment description: {idea['minimum_viable_experiment']}
 Compute cost target: {idea['compute_cost']}
 
+You MUST choose datasets ONLY from this harness registry. These are the only
+datasets the pipeline can run. Pick the one(s) whose stated uses best fit the
+hypothesis:
+{registry.describe_for_planner()}
+
 Available papers for baseline references:
 {json.dumps([p['title'] for p in paper_list['papers'][:10]], indent=2)}
 
@@ -39,7 +47,7 @@ Return a JSON object with this exact structure:
     {{"name": "method name", "citation": "paper title", "reason_for_inclusion": "why"}}
   ],
   "datasets": [
-    {{"name": "dataset name", "url": "real url", "size": "approximate size", "license": "license type"}}
+    {{"name": "EXACT registry name from the list above", "size": "sample count", "license": "sklearn/synthetic"}}
   ],
   "metrics": [
     {{"name": "metric name", "formula": "formula or description", "higher_is_better": true}}
@@ -50,7 +58,8 @@ Return a JSON object with this exact structure:
   "estimated_runtime_hours": 2.0
 }}
 
-Use only real publicly available datasets. Return ONLY the JSON object."""
+The "name" of each dataset MUST be copied verbatim from the registry list above
+(e.g. "iris", "synthetic_imbalanced_binary"). Return ONLY the JSON object."""
 
     response = client.chat.completions.create(
         model=config.MODEL,
